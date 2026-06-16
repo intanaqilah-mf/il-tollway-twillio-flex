@@ -1,7 +1,8 @@
 import React from "react"
 import { FlexPlugin } from "@twilio/flex-plugin"
 
-import CustomTaskList from "./components/CustomTaskList/CustomTaskList"
+import SAICPanel from "./components/SAICPanel/SAICPanel"
+import LiveTranscript from "./components/LiveTranscript/LiveTranscript"
 
 const PLUGIN_NAME = "SamplePlugin"
 
@@ -11,16 +12,24 @@ export default class SamplePlugin extends FlexPlugin {
   }
 
   /**
-   * This code is run when your plugin is being started
-   * Use this to modify any UI components or attach to the actions framework
-   *
    * @param flex { typeof import('@twilio/flex-ui') }
+   * @param manager { import('@twilio/flex-ui').Manager }
    */
   async init(flex, manager) {
-    flex.CRMContainer.defaultProps.uriCallback = (task) => {
-      return task
-        ? `https://www.bing.com/search?q=${task.attributes.name}`
-        : "https://www.bing.com"
-    }
+    // ── LEFT PANEL: replaces the "No active tasks" blank area ─────────
+    // Panel1 is the main left workspace — adding here makes the SAIC panel
+    // visible at all times, not just when a task is selected
+    flex.AgentDesktopView.Panel1.Content.add(
+      <SAICPanel key="saic-panel" />,
+      { sortOrder: -1 }
+    )
+
+    // ── RIGHT PANEL: Live Transcript (replaces Bing CRM) ─────────────
+    flex.CRMContainer.defaultProps.uriCallback = () => ""
+
+    flex.CRMContainer.Content.add(
+      <LiveTranscript key="live-transcript" />,
+      { sortOrder: -1 }
+    )
   }
 }
