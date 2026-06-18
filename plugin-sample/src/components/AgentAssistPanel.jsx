@@ -27,7 +27,7 @@ function ConnectionDot({ connected, error }) {
 }
 
 const AgentAssistPanel = ({ task }) => {
-  const { preCall, transcript, sentiment, postCall, connected, error, isMock } = useAgentAssistWebSocket(task);
+  const { preCall, transcript, sentiment, postCall, connected, error } = useAgentAssistWebSocket(task);
   const transcriptEndRef = useRef(null);
 
   useEffect(() => {
@@ -57,7 +57,6 @@ const AgentAssistPanel = ({ task }) => {
         <div className="aap-section">
           <div className="aap-section-header aap-section-header--row">
             <span>Pre-Call Context</span>
-            {isMock && <span className="aap-mock-badge">⚠ MOCK DATA</span>}
           </div>
           <div className="aap-field-row">
             <span className="aap-field-label">Authentication</span>

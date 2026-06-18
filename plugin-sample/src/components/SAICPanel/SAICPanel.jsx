@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
 const colors = {
   navyHeader: '#1a3352',
@@ -10,6 +11,7 @@ const colors = {
   textSecondary: '#6a6d70',
   textLabel: '#8c8c8c',
   sentimentRed: '#bb0000',
+  sentimentGreen: '#107e3e',
   authGreen: '#107e3e',
   intentBlue: '#0a6ed1',
   intentBlueBg: '#e8f2ff',
@@ -79,6 +81,11 @@ const s = {
     fontWeight: '500',
     lineHeight: '1.4',
   },
+  fieldPlaceholder: {
+    color: colors.textSecondary,
+    fontWeight: '400',
+    fontStyle: 'italic',
+  },
 
   // ── Auth status ──────────────────────────────────────────────────
   authRow: {
@@ -90,12 +97,7 @@ const s = {
     width: '9px',
     height: '9px',
     borderRadius: '50%',
-    background: colors.authGreen,
     flexShrink: 0,
-  },
-  authText: {
-    color: colors.authGreen,
-    fontWeight: '600',
   },
 
   // ── Intent tags ──────────────────────────────────────────────────
@@ -146,13 +148,7 @@ const s = {
     width: '10px',
     height: '10px',
     borderRadius: '50%',
-    background: colors.sentimentRed,
     flexShrink: 0,
-  },
-  sentimentText: {
-    color: colors.sentimentRed,
-    fontWeight: '700',
-    fontSize: '13px',
   },
 
   // ── Summary ───────────────────────────────────────────────────────
@@ -232,18 +228,70 @@ const s = {
   },
 };
 
-const MOCK_INTENTS = ['Toll Complaint', 'I-PASS Inquiry', 'Refund Request'];
+function getSentimentColor(label) {
+  if (label === 'Positive') return colors.sentimentGreen;
+  if (label === 'Negative') return colors.sentimentRed;
+  return '#888780';
+}
 
-const DEFAULT_SUMMARY =
-  'A customer complaint regarding a toll charge on 10/26/2023 despite having an I-PASS. Agent confirmed I-PASS was in vehicle and filed a formal complaint (Case C-98765). Customer advised to monitor email.';
+function formatDuration(seconds) {
+  if (seconds == null) return null;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
 
 const SAICPanel = ({ task }) => {
+  const { preCall, sentiment, postCall } = useAgentAssistWebSocket(task);
   const [editing, setEditing] = useState(false);
-  const [summary, setSummary] = useState(DEFAULT_SUMMARY);
+  const [summary, setSummary] = useState('');
+  const [summaryEdited, setSummaryEdited] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  // Populate summary from postCall when it arrives, unless user already edited it
+  useEffect(() => {
+    if (postCall?.summary && !summaryEdited) {
+      setSummary(postCall.summary);
+    }
+  }, [postCall?.summary, summaryEdited]);
+
+  // Reset edit flag when task changes
+  useEffect(() => {
+    setSummary('');
+    setSummaryEdited(false);
+    setEditing(false);
+    setSubmitted(false);
+  }, [task?.taskSid]);
+
   const callerId =
-    (task && task.attributes && task.attributes.from) || '+1 (555) 234-5678';
+    preCall?.callersPhoneNumber ||
+    task?.attributes?.from ||
+    null;
+
+  const accountRef = task?.taskSid ? task.taskSid.slice(-10) : null;
+
+  const authStatus = preCall?.authenticationStatus;
+  const isVerified = authStatus === 'AUTHENTICATED';
+  const authDotColor = authStatus
+    ? (isVerified ? colors.authGreen : colors.sentimentRed)
+    : '#cccccc';
+  const authTextColor = authStatus
+    ? (isVerified ? colors.authGreen : colors.sentimentRed)
+    : colors.textSecondary;
+  const authLabel = authStatus
+    ? (isVerified ? 'Verified' : authStatus)
+    : null;
+
+  const intents = preCall?.lastOpenIntent ? [preCall.lastOpenIntent] : [];
+
+  // Live sentiment takes priority over pre-call sentiment
+  const sentimentLabel =
+    sentiment?.sentimentLabel ||
+    preCall?.sentimentAnalysis ||
+    null;
+  const sentimentColor = getSentimentColor(sentimentLabel);
+
+  const postCallDuration = formatDuration(postCall?.callDurationSeconds);
 
   const handleSubmit = () => {
     setEditing(false);
@@ -251,55 +299,68 @@ const SAICPanel = ({ task }) => {
     setTimeout(() => setSubmitted(false), 3000);
   };
 
+  const Placeholder = ({ text }) => (
+    <span style={s.fieldPlaceholder}>{text || '—'}</span>
+  );
+
   return (
     <div style={s.container}>
 
       {/* ── PRE-CALL SECTION ── */}
       <div style={s.sectionBar}>
         <span>Pre-Call Information</span>
-        <span style={s.sectionBarMeta}>CA123456789 | 3m 42s</span>
+        {accountRef && <span style={s.sectionBarMeta}>{accountRef}</span>}
       </div>
 
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>Caller ID</div>
-        <div style={s.fieldValue}>{callerId}</div>
+        <div style={s.fieldValue}>
+          {callerId || <Placeholder text="Waiting..." />}
+        </div>
       </div>
 
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>Authentication Status</div>
         <div style={{ ...s.fieldValue, ...s.authRow }}>
-          <span style={s.authDot} />
-          <span style={s.authText}>Verified</span>
+          <span style={{ ...s.authDot, background: authDotColor }} />
+          <span style={{ color: authTextColor, fontWeight: '600' }}>
+            {authLabel || <Placeholder text="—" />}
+          </span>
         </div>
       </div>
 
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>Intents Identified</div>
         <div style={s.tagWrap}>
-          {MOCK_INTENTS.map((intent) => (
-            <span key={intent} style={s.tag}>{intent}</span>
-          ))}
+          {intents.length > 0
+            ? intents.map((intent) => (
+                <span key={intent} style={s.tag}>{intent}</span>
+              ))
+            : <Placeholder text="—" />
+          }
         </div>
       </div>
 
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>Stated Reason</div>
         <div style={s.fieldValue}>
-          Charged for toll despite active I-PASS — wants to file a complaint
+          {preCall?.statedReason || <Placeholder text="—" />}
         </div>
       </div>
 
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>IVR Path</div>
         <div style={s.fieldValue}>
-          Main Menu &rsaquo; Billing &rsaquo; Toll Dispute &rsaquo; Agent Transfer
+          {preCall?.IVRPathSummary || <Placeholder text="—" />}
         </div>
       </div>
 
       {/* ── POST-CALL WRAP-UP SECTION ── */}
       <div style={s.sectionBar}>
         <span>Post-Call Wrap-Up</span>
-        <span style={s.sectionBarMeta}>CA123456789 | 5m 30s</span>
+        <span style={s.sectionBarMeta}>
+          {accountRef ? `${accountRef}${postCallDuration ? ` | ${postCallDuration}` : ''}` : ''}
+        </span>
       </div>
       <div style={s.sectionSubtitle}>Pre-populated information from an IVR handoff</div>
 
@@ -308,8 +369,16 @@ const SAICPanel = ({ task }) => {
         <div style={s.insightTitle}>Real-time Insights</div>
         <div style={s.sentimentLine}>Sentiment Analysis:</div>
         <div style={s.sentimentValue}>
-          <span style={s.sentimentDot} />
-          <span style={s.sentimentText}>Negative (Frustrated)</span>
+          {sentimentLabel ? (
+            <>
+              <span style={{ ...s.sentimentDot, background: sentimentColor }} />
+              <span style={{ color: sentimentColor, fontWeight: '700', fontSize: '13px' }}>
+                {sentimentLabel}
+              </span>
+            </>
+          ) : (
+            <Placeholder text="Waiting for live data..." />
+          )}
         </div>
       </div>
 
@@ -320,11 +389,13 @@ const SAICPanel = ({ task }) => {
           <textarea
             style={s.summaryTextarea}
             value={summary}
-            onChange={(e) => setSummary(e.target.value)}
+            onChange={(e) => { setSummary(e.target.value); setSummaryEdited(true); }}
             autoFocus
           />
         ) : (
-          <div style={s.summaryText}>{summary}</div>
+          <div style={{ ...s.summaryText, color: summary ? colors.textPrimary : colors.textSecondary }}>
+            {summary || 'Waiting for session summary...'}
+          </div>
         )}
       </div>
 

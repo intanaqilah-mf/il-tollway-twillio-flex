@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
 const colors = {
   navyHeader: '#1a3352',
@@ -75,6 +76,13 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     gap: '14px',
+  },
+  emptyState: {
+    color: colors.textSecondary,
+    fontSize: '13px',
+    textAlign: 'center',
+    padding: '24px 16px',
+    fontStyle: 'italic',
   },
   messageBubble: {
     maxWidth: '90%',
@@ -166,44 +174,35 @@ const s = {
   },
 };
 
-const MOCK_TRANSCRIPT = [
-  {
-    id: 1,
-    speaker: 'Customer',
-    text: "Hi, I'm calling because I was charged for a toll, but I have an I-PASS and it should have been automatic. I want to file a complaint.",
-    time: '2:14 PM',
-  },
-  {
-    id: 2,
-    speaker: 'Agent',
-    text: "I understand your frustration. Let me pull up your account. I can see your I-PASS is registered and active. Can you confirm the toll location and approximate date?",
-    time: '2:15 PM',
-  },
-  {
-    id: 3,
-    speaker: 'Customer',
-    text: 'It was on October 26th, 2023 on I-90 heading westbound around 8 AM.',
-    time: '2:16 PM',
-  },
-  {
-    id: 4,
-    speaker: 'Agent',
-    text: "Thank you. I've located the transaction. I've filed the complaint for you. Your case number is C-98765. You'll receive an email confirmation shortly with all the details.",
-    time: '2:17 PM',
-  },
-  {
-    id: 5,
-    speaker: 'Customer',
-    text: 'Thank you.',
-    time: '2:18 PM',
-  },
-];
+function formatTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDuration(seconds) {
+  if (seconds == null) return null;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
 
 const LiveTranscript = ({ task }) => {
+  const { transcript: wsTranscript, postCall } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
   const [inputText, setInputText] = useState('');
-  const [messages, setMessages] = useState(MOCK_TRANSCRIPT);
+  const [agentNotes, setAgentNotes] = useState([]);
   const callEnded = !task;
+
+  // Normalize WebSocket entries to display format
+  const wsMessages = wsTranscript.map((entry) => ({
+    id: entry.ts,
+    speaker: entry.speaker === 'agent' ? 'Agent' : 'Customer',
+    text: entry.transcript,
+    time: formatTime(entry.ts),
+    isNote: false,
+  }));
+
+  // Agent-typed notes appear after the live transcript
+  const messages = [...wsMessages, ...agentNotes];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -211,14 +210,25 @@ const LiveTranscript = ({ task }) => {
     }
   }, [messages]);
 
+  // Clear notes when task changes
+  useEffect(() => {
+    setAgentNotes([]);
+    setInputText('');
+  }, [task?.taskSid]);
+
   const handleSend = () => {
     const text = inputText.trim();
     if (!text) return;
     const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setMessages((prev) => [
+    setAgentNotes((prev) => [
       ...prev,
-      { id: Date.now(), speaker: 'Agent', text, time },
+      {
+        id: Date.now(),
+        speaker: 'Agent',
+        text,
+        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isNote: true,
+      },
     ]);
     setInputText('');
   };
@@ -228,6 +238,15 @@ const LiveTranscript = ({ task }) => {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const callDuration = formatDuration(postCall?.callDurationSeconds);
+
+  const handleCopy = () => {
+    const text = messages
+      .map((m) => `[${m.time}] ${m.speaker}: ${m.text}`)
+      .join('\n');
+    navigator.clipboard.writeText(text);
   };
 
   return (
@@ -247,39 +266,45 @@ const LiveTranscript = ({ task }) => {
           <span>Live Transcript</span>
         </div>
         <div style={s.headerActions}>
-          <button style={s.iconBtn} title="Copy transcript">Copy</button>
+          <button style={s.iconBtn} title="Copy transcript" onClick={handleCopy}>Copy</button>
           <button style={s.iconBtn} title="Expand">⤢</button>
         </div>
       </div>
 
       {/* Messages */}
       <div style={s.scrollArea} ref={scrollRef}>
-        {messages.map((msg) => {
-          const isAgent = msg.speaker === 'Agent';
-          return (
-            <div
-              key={msg.id}
-              style={{
-                ...s.messageBubble,
-                ...(isAgent ? s.agentBubble : s.customerBubble),
-              }}
-            >
-              <div style={s.speakerRow}>
-                <span
-                  style={isAgent ? s.speakerAgent : s.speakerCustomer}
-                >
-                  {msg.speaker}
-                </span>
-                <span style={s.timestamp}>{msg.time}</span>
+        {messages.length === 0 ? (
+          <div style={s.emptyState}>
+            {callEnded ? 'No transcript available.' : 'Waiting for transcript...'}
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isAgent = msg.speaker === 'Agent';
+            return (
+              <div
+                key={msg.id}
+                style={{
+                  ...s.messageBubble,
+                  ...(isAgent ? s.agentBubble : s.customerBubble),
+                }}
+              >
+                <div style={s.speakerRow}>
+                  <span style={isAgent ? s.speakerAgent : s.speakerCustomer}>
+                    {msg.speaker}{msg.isNote ? ' (note)' : ''}
+                  </span>
+                  <span style={s.timestamp}>{msg.time}</span>
+                </div>
+                <div style={s.messageText}>{msg.text}</div>
               </div>
-              <div style={s.messageText}>{msg.text}</div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
 
         {callEnded && (
           <div style={s.callEndedBar}>
-            Call ended &mdash; Duration: 5m 30s
+            {callDuration
+              ? `Call ended — Duration: ${callDuration}`
+              : 'Call ended'}
           </div>
         )}
       </div>
