@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { Manager } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
+
+// Flex Panel1.Content and CRMContainer.Content do not always inject the `task`
+// prop the same way Panel2 does. Read directly from the Flex Redux store as a fallback.
+function getFlexTask() {
+  try {
+    const flex = Manager.getInstance().store.getState()?.flex;
+    const sid = flex?.view?.selectedTaskSid;
+    const tasks = flex?.worker?.tasks;
+    if (sid && tasks?.get) return tasks.get(sid) || null;
+    if (tasks?.size > 0) return tasks.values().next().value || null;
+  } catch {}
+  return null;
+}
 
 const colors = {
   navyHeader: '#1a3352',
@@ -229,8 +243,9 @@ const s = {
 };
 
 function getSentimentColor(label) {
-  if (label === 'Positive') return colors.sentimentGreen;
-  if (label === 'Negative') return colors.sentimentRed;
+  const l = (label || '').toLowerCase();
+  if (l.startsWith('pos')) return colors.sentimentGreen; // handles "Positive", "Possitive"
+  if (l.startsWith('neg')) return colors.sentimentRed;
   return '#888780';
 }
 
@@ -241,12 +256,38 @@ function formatDuration(seconds) {
   return `${m}m ${s}s`;
 }
 
-const SAICPanel = ({ task }) => {
-  const { preCall, sentiment, postCall } = useAgentAssistWebSocket(task);
+const SAICPanel = ({ task: taskProp }) => {
+  // Resolve task — use Flex-injected prop when available, otherwise fall back
+  // to the Flex Redux store. Panel1.Content doesn't always inject the task prop.
+  const [task, setTask] = useState(() => taskProp || getFlexTask());
+
+  useEffect(() => {
+    if (taskProp) {
+      setTask(taskProp);
+      return;
+    }
+    setTask(getFlexTask());
+    try {
+      return Manager.getInstance().store.subscribe(() => setTask(getFlexTask()));
+    } catch { return undefined; }
+  }, [taskProp]);
+
+  const { preCall: wsPreCall, sentiment, postCall } = useAgentAssistWebSocket(task);
+
+  // Cache last known preCall so fields stay visible after the task is removed (post-call)
+  const [cachedPreCall, setCachedPreCall] = useState(null);
+  useEffect(() => {
+    if (wsPreCall) setCachedPreCall(wsPreCall);
+  }, [wsPreCall]);
+
+  const preCall = wsPreCall || cachedPreCall;
+
   const [editing, setEditing] = useState(false);
   const [summary, setSummary] = useState('');
   const [summaryEdited, setSummaryEdited] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  const taskSid = task?.taskSid || task?.sid || null;
 
   // Populate summary from postCall when it arrives, unless user already edited it
   useEffect(() => {
@@ -255,23 +296,29 @@ const SAICPanel = ({ task }) => {
     }
   }, [postCall?.summary, summaryEdited]);
 
-  // Reset edit flag when task changes
+  // Reset on new task
   useEffect(() => {
     setSummary('');
     setSummaryEdited(false);
     setEditing(false);
     setSubmitted(false);
-  }, [task?.taskSid]);
+    setCachedPreCall(null);
+  }, [taskSid]);
+
+  // Direct task-attribute fallbacks so pre-call section populates even when
+  // the WebSocket hasn't delivered a pre_call_summary message yet.
+  const attrs = task?.attributes || {};
 
   const callerId =
     preCall?.callersPhoneNumber ||
-    task?.attributes?.from ||
+    attrs.from ||
+    attrs.caller ||
     null;
 
-  const accountRef = task?.taskSid ? task.taskSid.slice(-10) : null;
+  const accountRef = taskSid ? taskSid.slice(-10) : null;
 
-  const authStatus = preCall?.authenticationStatus;
-  const isVerified = authStatus === 'AUTHENTICATED';
+  const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
+  const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified';
   const authDotColor = authStatus
     ? (isVerified ? colors.authGreen : colors.sentimentRed)
     : '#cccccc';
@@ -282,12 +329,21 @@ const SAICPanel = ({ task }) => {
     ? (isVerified ? 'Verified' : authStatus)
     : null;
 
-  const intents = preCall?.lastOpenIntent ? [preCall.lastOpenIntent] : [];
+  const intentVal =
+    preCall?.lastOpenIntent ||
+    attrs.intentIdentified ||
+    attrs.lastOpenIntent ||
+    null;
+  const intents = intentVal ? [intentVal] : [];
+
+  const statedReason = preCall?.statedReason || attrs.statedReason || null;
+  const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || null;
 
   // Live sentiment takes priority over pre-call sentiment
   const sentimentLabel =
     sentiment?.sentimentLabel ||
     preCall?.sentimentAnalysis ||
+    attrs.sentimentAnalysis ||
     null;
   const sentimentColor = getSentimentColor(sentimentLabel);
 
@@ -344,14 +400,14 @@ const SAICPanel = ({ task }) => {
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>Stated Reason</div>
         <div style={s.fieldValue}>
-          {preCall?.statedReason || <Placeholder text="—" />}
+          {statedReason || <Placeholder text="—" />}
         </div>
       </div>
 
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>IVR Path</div>
         <div style={s.fieldValue}>
-          {preCall?.IVRPathSummary || <Placeholder text="—" />}
+          {ivrPath || <Placeholder text="—" />}
         </div>
       </div>
 

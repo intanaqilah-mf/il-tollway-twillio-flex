@@ -1,5 +1,17 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { Manager } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
+
+function getFlexTask() {
+  try {
+    const flex = Manager.getInstance().store.getState()?.flex;
+    const sid = flex?.view?.selectedTaskSid;
+    const tasks = flex?.worker?.tasks;
+    if (sid && tasks?.get) return tasks.get(sid) || null;
+    if (tasks?.size > 0) return tasks.values().next().value || null;
+  } catch {}
+  return null;
+}
 
 const colors = {
   navyHeader: '#1a3352',
@@ -185,7 +197,21 @@ function formatDuration(seconds) {
   return `${m}m ${s}s`;
 }
 
-const LiveTranscript = ({ task }) => {
+const LiveTranscript = ({ task: taskProp }) => {
+  // CRMContainer.Content may not inject the task prop — fall back to Flex store
+  const [task, setTask] = useState(() => taskProp || getFlexTask());
+
+  useEffect(() => {
+    if (taskProp) {
+      setTask(taskProp);
+      return;
+    }
+    setTask(getFlexTask());
+    try {
+      return Manager.getInstance().store.subscribe(() => setTask(getFlexTask()));
+    } catch { return undefined; }
+  }, [taskProp]);
+
   const { transcript: wsTranscript, postCall } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
   const [inputText, setInputText] = useState('');

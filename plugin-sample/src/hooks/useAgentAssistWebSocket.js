@@ -64,7 +64,8 @@ function openConnection(taskSid) {
     console.log('[AA] task attrs on open:', JSON.stringify(entry.taskAttrs));
     entry.state.connected = true;
     entry.state.error = null;
-    entry.retryCount = 0;
+    // Do NOT reset retryCount here — only reset it when the server actually sends data.
+    // Resetting on open caused an infinite connect→1006→reconnect loop.
     notify(taskSid);
 
     // Tell the server which task/call to stream data for.
@@ -92,6 +93,8 @@ function openConnection(taskSid) {
     }
 
     console.log('[AA] message received:', data.type);
+    // Server sent real data — connection is stable, reset the retry counter
+    entry.retryCount = 0;
     switch (data.type) {
       case 'pre_call_summary':
         entry.state.preCall = {
@@ -206,8 +209,23 @@ export function useAgentAssistWebSocket(task) {
         attrs.CallSid ||
         null;
       console.log('[AA] registering task', taskSid, '| callSid:', callSid, '| all attrs:', JSON.stringify(attrs));
+
+      // Seed preCall from task attributes immediately so the UI isn't blank
+      // while the WebSocket is connecting or if the server is unavailable.
+      // WebSocket pre_call_summary will override these values when it arrives.
+      const seededPreCall = {
+        callersPhoneNumber: attrs.from || attrs.caller || null,
+        authenticationStatus: attrs.authenticationStatus || null,
+        // intentIdentified is the IVR-detected intent; fall back to lastOpenIntent
+        lastOpenIntent: attrs.intentIdentified || attrs.lastOpenIntent || null,
+        IVRPathSummary: attrs.IVRPathSummary || null,
+        statedReason: attrs.statedReason || null,
+        sentimentAnalysis: attrs.sentimentAnalysis || null,
+      };
+      const hasAttrData = Object.values(seededPreCall).some(Boolean);
+
       registry.set(taskSid, {
-        state: { ...EMPTY_STATE },
+        state: { ...EMPTY_STATE, preCall: hasAttrData ? seededPreCall : null },
         listeners: new Set(),
         ws: null,
         retryCount: 0,
