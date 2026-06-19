@@ -331,8 +331,8 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const intentVal =
     preCall?.lastOpenIntent ||
-    attrs.intentIdentified ||
     attrs.lastOpenIntent ||
+    attrs.intentIdentified ||
     null;
   const intents = intentVal ? [intentVal] : [];
 
