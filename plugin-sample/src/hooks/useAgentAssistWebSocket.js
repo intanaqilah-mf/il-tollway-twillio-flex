@@ -4,6 +4,33 @@ import { Manager, Actions } from '@twilio/flex-ui';
 const WSS_URL = 'wss://gapi.getipass.com/ivr/relay-server-open/dev/browser-ui/streaming';
 const MAX_BACKOFF_MS = 30000;
 
+// Formatted card numbers (16-digit grouped, 15-digit Amex, MM/YY expiry)
+const CARD_16_RE = /\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/g;
+const CARD_15_RE = /\b\d{4}[ -]?\d{6}[ -]?\d{5}\b/g;
+const EXPIRY_RE = /\b(0?[1-9]|1[0-2])[/\s]\d{2}(?:\d{2})?\b/g;
+
+// Context-aware: agent phrases that signal the customer is about to read card data
+const CARD_REQUEST_RE = /card\s*(number|no\.?)|expir(ation|y|e)|cvv|cvc|security\s*code/i;
+
+// Context-aware: spoken digit sequences like "4 1, 1, 111 1" (3+ groups of 1-4 digits separated by spaces/commas)
+const SPOKEN_DIGITS_RE = /\b\d{1,4}(?:[\s,]+\d{1,4}){2,}\b/g;
+// Context-aware: standalone 3-4 digit blocks (CVV or MMYY expiry without separator)
+const SHORT_CARD_RE = /\b\d{3,4}\b/g;
+
+function redactSensitiveData(text, inCardContext = false) {
+  if (!text) return text;
+  let result = text
+    .replace(CARD_16_RE, '**** **** **** ****')
+    .replace(CARD_15_RE, '**** ****** *****')
+    .replace(EXPIRY_RE, '**/**');
+  if (inCardContext) {
+    result = result
+      .replace(SPOKEN_DIGITS_RE, '[redacted]')
+      .replace(SHORT_CARD_RE, '[redacted]');
+  }
+  return result;
+}
+
 const EMPTY_STATE = {
   preCall: null,
   transcript: [],
@@ -113,13 +140,22 @@ function openConnection(taskSid) {
           callersPhoneNumber: p.callersPhoneNumber,
         };
         break;
-      case 'transcript':
+      case 'transcript': {
         console.log(`[AA] ✅ transcript [${p.speaker}]:`, p.transcript);
+        const inCardContext = p.speaker === 'customer' && entry.awaitingCardData;
+        const redacted = redactSensitiveData(p.transcript, inCardContext);
+        // Agent asking for card data → flag next customer turn for redaction
+        if (p.speaker === 'agent' && CARD_REQUEST_RE.test(p.transcript)) {
+          entry.awaitingCardData = true;
+        } else if (p.speaker === 'customer' && entry.awaitingCardData) {
+          entry.awaitingCardData = false;
+        }
         entry.state.transcript = [
           ...entry.state.transcript,
-          { transcript: p.transcript, speaker: p.speaker, ts: p.ts },
+          { transcript: redacted, speaker: p.speaker, ts: p.ts },
         ];
         break;
+      }
       case 'sentiment':
         console.log('[AA] ✅ sentiment:', p.sentimentLabel, p.sentimentScore);
         entry.state.sentiment = {
@@ -237,6 +273,7 @@ export function useAgentAssistWebSocket(task) {
         retryCount: 0,
         reconnectTimer: null,
         intentionalClose: false,
+        awaitingCardData: false,
         callSid,
         taskAttrs: attrs,
       });

@@ -205,6 +205,24 @@ const s = {
     outline: 'none',
   },
 
+  // ── Structured summary ────────────────────────────────────────────
+  summaryField: {
+    marginBottom: '8px',
+  },
+  summaryFieldLabel: {
+    fontSize: '10px',
+    color: colors.textLabel,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: '0.4px',
+    marginBottom: '2px',
+  },
+  summaryFieldValue: {
+    color: colors.textPrimary,
+    lineHeight: '1.5',
+    fontSize: '13px',
+  },
+
   // ── Buttons ───────────────────────────────────────────────────────
   btnRow: {
     display: 'flex',
@@ -254,6 +272,30 @@ function formatDuration(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}m ${s}s`;
+}
+
+const SUMMARY_KEYS = ['situation', 'action', 'resolution', 'customer_satisfaction'];
+const SUMMARY_LABELS = {
+  situation: 'Situation',
+  action: 'Action',
+  resolution: 'Resolution',
+  customer_satisfaction: 'Customer Satisfaction',
+};
+
+function parseSummaryFields(text) {
+  if (!text) return null;
+  const result = {};
+  let matched = false;
+  for (let i = 0; i < SUMMARY_KEYS.length; i++) {
+    const key = SUMMARY_KEYS[i];
+    const nextKey = SUMMARY_KEYS[i + 1];
+    const pattern = nextKey
+      ? new RegExp(`${key}\\s+(.+?)\\s+${nextKey}`, 'is')
+      : new RegExp(`${key}\\s+(.+?)$`, 'is');
+    const m = text.match(pattern);
+    if (m) { result[key] = m[1].trim(); matched = true; }
+  }
+  return matched ? result : null;
 }
 
 const SAICPanel = ({ task: taskProp }) => {
@@ -448,11 +490,26 @@ const SAICPanel = ({ task: taskProp }) => {
             onChange={(e) => { setSummary(e.target.value); setSummaryEdited(true); }}
             autoFocus
           />
-        ) : (
-          <div style={{ ...s.summaryText, color: summary ? colors.textPrimary : colors.textSecondary }}>
-            {summary || 'Waiting for session summary...'}
-          </div>
-        )}
+        ) : (() => {
+          const parsed = parseSummaryFields(summary);
+          if (parsed) {
+            return (
+              <div style={{ ...s.summaryText, padding: '10px 12px' }}>
+                {SUMMARY_KEYS.filter((k) => parsed[k]).map((k) => (
+                  <div key={k} style={s.summaryField}>
+                    <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
+                    <div style={s.summaryFieldValue}>{parsed[k]}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          }
+          return (
+            <div style={{ ...s.summaryText, color: summary ? colors.textPrimary : colors.textSecondary }}>
+              {summary || 'Waiting for session summary...'}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Action buttons */}
