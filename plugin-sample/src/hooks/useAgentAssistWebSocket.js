@@ -9,26 +9,37 @@ const CARD_16_RE = /\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/g;
 const CARD_15_RE = /\b\d{4}[ -]?\d{6}[ -]?\d{5}\b/g;
 const EXPIRY_RE = /\b(0?[1-9]|1[0-2])[/\s]\d{2}(?:\d{2})?\b/g;
 
-// Context-aware: agent phrases that signal the customer is about to read card data
-const CARD_REQUEST_RE = /card\s*(number|no\.?)|expir(ation|y|e)|cvv|cvc|security\s*code/i;
+// Context-aware: agent phrases that signal the customer is about to read card data.
+// Intentionally broad to survive speech-to-text mishearings:
+//   - \bcv[a-z]?\b catches CV, CVV, CVC, CVB, CV2, etc. (third letter optional)
+//   - expir covers expiration/expiry/expire/expiring
+//   - (three|3)[- ]?digit covers "three digit code" as an alternative to saying CVV
+//   - valid through/thru/until covers expiry date alternatives
+const CARD_REQUEST_RE = new RegExp(
+  [
+    'card\\s*(number|no\\.?|num|digit|detail)',
+    'expir',
+    'valid\\s*(through|thru|until|till)',
+    'month.*year|year.*month',
+    '\\bcv[a-z]?\\b',           // CV, CVV, CVC, CVB — third letter optional
+    'security\\s*code',
+    'verification\\s*code',
+    '(three|3)[\\s-]?digit',
+    '(four|4)[\\s-]?digit',
+    'back.*card|card.*back',
+  ].join('|'),
+  'i'
+);
 
-// Context-aware: spoken digit sequences like "4 1, 1, 111 1" (3+ groups of 1-4 digits separated by spaces/commas)
-const SPOKEN_DIGITS_RE = /\b\d{1,4}(?:[\s,]+\d{1,4}){2,}\b/g;
-// Context-aware: standalone 3-4 digit blocks (CVV or MMYY expiry without separator)
-const SHORT_CARD_RE = /\b\d{3,4}\b/g;
 
-function redactSensitiveData(text, inCardContext = false) {
+// Called only for turns outside a known card-data context.
+// Catches formatted card numbers that appear incidentally (e.g. agent repeating back).
+function redactSensitiveData(text) {
   if (!text) return text;
-  let result = text
+  return text
     .replace(CARD_16_RE, '**** **** **** ****')
     .replace(CARD_15_RE, '**** ****** *****')
     .replace(EXPIRY_RE, '**/**');
-  if (inCardContext) {
-    result = result
-      .replace(SPOKEN_DIGITS_RE, '[redacted]')
-      .replace(SHORT_CARD_RE, '[redacted]');
-  }
-  return result;
 }
 
 const EMPTY_STATE = {
@@ -142,13 +153,19 @@ function openConnection(taskSid) {
         break;
       case 'transcript': {
         console.log(`[AA] ✅ transcript [${p.speaker}]:`, p.transcript);
-        const inCardContext = p.speaker === 'customer' && entry.awaitingCardData;
-        const redacted = redactSensitiveData(p.transcript, inCardContext);
-        // Agent asking for card data → flag next customer turn for redaction
+        const inCardContext = p.speaker === 'customer' && entry.awaitingCardTurns > 0;
+        // When card context is active, replace the ENTIRE customer utterance — not just
+        // digits. Expiry spoken as "September thirty-first" has no digits to mask, so
+        // selective regex fails. Full replacement is also PCI-DSS aligned.
+        const redacted = inCardContext
+          ? '[card data not logged]'
+          : redactSensitiveData(p.transcript);
         if (p.speaker === 'agent' && CARD_REQUEST_RE.test(p.transcript)) {
-          entry.awaitingCardData = true;
-        } else if (p.speaker === 'customer' && entry.awaitingCardData) {
-          entry.awaitingCardData = false;
+          // Each agent card-data request resets the counter to 2 — protects the direct
+          // reply plus one overflow turn in case the next agent trigger is misheard
+          entry.awaitingCardTurns = 2;
+        } else if (p.speaker === 'customer' && entry.awaitingCardTurns > 0) {
+          entry.awaitingCardTurns -= 1;
         }
         entry.state.transcript = [
           ...entry.state.transcript,
@@ -273,7 +290,7 @@ export function useAgentAssistWebSocket(task) {
         retryCount: 0,
         reconnectTimer: null,
         intentionalClose: false,
-        awaitingCardData: false,
+        awaitingCardTurns: 0,  // redact next N customer turns after a card-data request
         callSid,
         taskAttrs: attrs,
       });
