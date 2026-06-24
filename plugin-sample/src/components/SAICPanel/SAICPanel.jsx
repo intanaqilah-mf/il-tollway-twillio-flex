@@ -457,7 +457,7 @@ const SAICPanel = ({ task: taskProp }) => {
     attrs.account_sid ||
     null;
 
-  const accountRef = taskSid ? taskSid.slice(-10) : null;
+  const callerName = preCall?.callerName || attrs.callerName || attrs.name || null;
 
   const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
   const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified' || authStatus === 'true';
@@ -531,7 +531,7 @@ const SAICPanel = ({ task: taskProp }) => {
       {/* ── PRE-CALL SECTION ── */}
       <div style={s.sectionBar}>
         <span>Pre-Call Information</span>
-        {accountRef && <span style={s.sectionBarMeta}>{accountRef}</span>}
+        {callerName && <span style={s.sectionBarMeta}>{callerName}</span>}
       </div>
 
       {/* Caller ID | Account Number */}
@@ -607,7 +607,7 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.sectionBar}>
         <span>Post-Call Wrap-Up</span>
         <span style={s.sectionBarMeta}>
-          {accountRef ? `${accountRef}${postCallDuration ? ` | ${postCallDuration}` : ''}` : ''}
+          {callerName ? `${callerName}${postCallDuration ? ` | ${postCallDuration}` : ''}` : (postCallDuration || '')}
         </span>
       </div>
       <div style={s.sectionSubtitle}>Pre-populated information from an IVR handoff</div>
