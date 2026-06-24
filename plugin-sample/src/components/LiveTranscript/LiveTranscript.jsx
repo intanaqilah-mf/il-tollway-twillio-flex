@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Manager } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
+import { CallFailedIcon } from '@twilio-paste/icons/esm/CallFailedIcon';
 
 function getFlexTask() {
   try {
@@ -279,11 +280,16 @@ const LiveTranscript = ({ task: taskProp }) => {
 
   return (
     <div style={s.container}>
-      {/* ── PULSE ANIMATION ── */}
+      {/* ── PULSE ANIMATION + ICON SIZING ── */}
       <style>{`
         @keyframes saic-pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.3; }
+        }
+        .saic-call-failed-icon svg {
+          width: 40px;
+          height: 40px;
+          color: #6a6d70;
         }
       `}</style>
 
@@ -329,10 +335,11 @@ const LiveTranscript = ({ task: taskProp }) => {
         )}
 
         {callEnded && (
-          <div style={s.callEndedBar}>
-            {callDuration
-              ? `Call ended — Duration: ${callDuration}`
-              : 'Call ended'}
+          <div style={{ ...s.callEndedBar, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '20px 14px' }}>
+            <span className="saic-call-failed-icon" style={{ display: 'inline-flex' }}>
+              <CallFailedIcon decorative size="sizeIcon70" />
+            </span>
+            {callDuration ? `Call ended — Duration: ${callDuration}` : 'Call ended'}
           </div>
         )}
       </div>
