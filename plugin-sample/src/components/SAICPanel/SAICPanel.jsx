@@ -297,8 +297,15 @@ const SUMMARY_LABELS = {
   resolution: 'Resolution',
   customer_satisfaction: 'Customer Satisfaction',
 };
-// Keys to show in UI — resolution and customer_satisfaction hidden until ready
-const SUMMARY_DISPLAY_KEYS = ['situation', 'action', /* 'resolution', 'customer_satisfaction' */];
+const SUMMARY_DISPLAY_KEYS = ['situation', 'action', 'resolution', 'customer_satisfaction'];
+
+// Regex patterns for each key — customer_satisfaction may appear as "customer satisfaction" (space) in AI output
+const SUMMARY_KEY_PATTERNS = {
+  situation: 'situation',
+  action: 'action',
+  resolution: 'resolution',
+  customer_satisfaction: 'customer[_ ]satisfaction',
+};
 
 function parseSummaryFields(text) {
   if (!text) return null;
@@ -307,13 +314,47 @@ function parseSummaryFields(text) {
   for (let i = 0; i < SUMMARY_KEYS.length; i++) {
     const key = SUMMARY_KEYS[i];
     const nextKey = SUMMARY_KEYS[i + 1];
-    const pattern = nextKey
-      ? new RegExp(`${key}\\s+(.+?)\\s+${nextKey}`, 'is')
-      : new RegExp(`${key}\\s+(.+?)$`, 'is');
+    const keyPat = SUMMARY_KEY_PATTERNS[key];
+    const nextPat = nextKey ? SUMMARY_KEY_PATTERNS[nextKey] : null;
+    const pattern = nextPat
+      ? new RegExp(`${keyPat}\\s+(.+?)\\s+${nextPat}`, 'is')
+      : new RegExp(`${keyPat}\\s+(.+?)$`, 'is');
     const m = text.match(pattern);
     if (m) { result[key] = m[1].trim(); matched = true; }
   }
   return matched ? result : null;
+}
+
+function StatedReasonValue({ value }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  if (!value) return <span style={{ color: colors.textSecondary, fontWeight: '400', fontStyle: 'italic' }}>—</span>;
+
+  return (
+    <span
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : 'Click to copy'}
+      style={{
+        color: copied ? colors.authGreen : colors.textPrimary,
+        fontWeight: '500',
+        lineHeight: '1.4',
+        cursor: 'pointer',
+        borderBottom: `1px dashed ${copied ? colors.authGreen : colors.borderColor}`,
+        transition: 'color 0.2s',
+        display: 'inline-block',
+      }}
+    >
+      {copied ? 'Copied!' : value}
+    </span>
+  );
 }
 
 const SAICPanel = ({ task: taskProp }) => {
@@ -379,12 +420,13 @@ const SAICPanel = ({ task: taskProp }) => {
     preCall?.accountNumber ||
     attrs.accountNumber ||
     attrs.account_number ||
+    attrs.account_sid ||
     null;
 
   const accountRef = taskSid ? taskSid.slice(-10) : null;
 
   const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
-  const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified';
+  const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified' || authStatus === 'true';
   const authDotColor = authStatus
     ? (isVerified ? colors.authGreen : colors.sentimentRed)
     : '#cccccc';
@@ -392,7 +434,7 @@ const SAICPanel = ({ task: taskProp }) => {
     ? (isVerified ? colors.authGreen : colors.sentimentRed)
     : colors.textSecondary;
   const authLabel = authStatus
-    ? (isVerified ? 'Verified' : authStatus)
+    ? (isVerified ? 'Authenticated' : 'Not Authenticated')
     : null;
 
   const intentVal =
@@ -477,22 +519,21 @@ const SAICPanel = ({ task: taskProp }) => {
         </div>
       </div>
 
-      <div style={s.fieldRow}>
-        <div style={s.fieldLabel}>Intents Identified</div>
-        <div style={s.tagWrap}>
-          {intents.length > 0
-            ? intents.map((intent) => (
-                <span key={intent} style={s.tag}>{intent}</span>
-              ))
-            : <Placeholder text="—" />
-          }
+      <div style={s.fieldRowDouble}>
+        <div style={s.fieldColLeft}>
+          <div style={s.fieldLabel}>Intents Identified</div>
+          <div style={s.tagWrap}>
+            {intents.length > 0
+              ? intents.map((intent) => (
+                  <span key={intent} style={s.tag}>{intent}</span>
+                ))
+              : <Placeholder text="—" />
+            }
+          </div>
         </div>
-      </div>
-
-      <div style={s.fieldRow}>
-        <div style={s.fieldLabel}>Stated Reason</div>
-        <div style={s.fieldValue}>
-          {statedReason || <Placeholder text="—" />}
+        <div style={s.fieldColRight}>
+          <div style={s.fieldLabel}>Stated Reason</div>
+          <StatedReasonValue value={statedReason} />
         </div>
       </div>
 
@@ -545,10 +586,12 @@ const SAICPanel = ({ task: taskProp }) => {
           if (parsed) {
             return (
               <div style={{ ...s.summaryText, padding: '10px 12px' }}>
-                {SUMMARY_DISPLAY_KEYS.filter((k) => parsed[k]).map((k) => (
+                {SUMMARY_DISPLAY_KEYS.map((k) => (
                   <div key={k} style={s.summaryField}>
                     <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
-                    <div style={s.summaryFieldValue}>{parsed[k]}</div>
+                    <div style={parsed[k] ? s.summaryFieldValue : { ...s.summaryFieldValue, color: colors.textSecondary, fontStyle: 'italic' }}>
+                      {parsed[k] || '—'}
+                    </div>
                   </div>
                 ))}
               </div>
