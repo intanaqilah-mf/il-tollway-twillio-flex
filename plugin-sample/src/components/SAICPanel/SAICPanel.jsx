@@ -325,6 +325,39 @@ function parseSummaryFields(text) {
   return matched ? result : null;
 }
 
+function AutoTextarea({ value, onChange }) {
+  const ref = React.useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.height = 'auto';
+    ref.current.style.height = ref.current.scrollHeight + 'px';
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      rows={1}
+      style={{
+        width: '100%',
+        boxSizing: 'border-box',
+        color: colors.textPrimary,
+        lineHeight: '1.6',
+        background: colors.white,
+        border: `1px solid ${colors.sapBlue}`,
+        borderRadius: '3px',
+        padding: '4px 6px',
+        fontSize: '13px',
+        fontFamily: 'inherit',
+        outline: 'none',
+        overflow: 'hidden',
+        resize: 'none',
+        minHeight: '24px',
+      }}
+    />
+  );
+}
+
 function StatedReasonValue({ value }) {
   const [copied, setCopied] = useState(false);
 
@@ -384,6 +417,7 @@ const SAICPanel = ({ task: taskProp }) => {
   const preCall = wsPreCall || cachedPreCall;
 
   const [editing, setEditing] = useState(false);
+  const [editFields, setEditFields] = useState({});
   const [summary, setSummary] = useState('');
   const [summaryEdited, setSummaryEdited] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -456,7 +490,32 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const postCallDuration = formatDuration(postCall?.callDurationSeconds);
 
+  const handleEnterEdit = () => {
+    const parsed = parseSummaryFields(summary) || {};
+    setEditFields({
+      situation: parsed.situation || '',
+      action: parsed.action || '',
+      resolution: parsed.resolution || '',
+      customer_satisfaction: parsed.customer_satisfaction || '',
+    });
+    setEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(false);
+    setEditFields({});
+  };
+
   const handleSubmit = () => {
+    if (editing) {
+      const rebuilt = SUMMARY_KEYS
+        .filter((k) => editFields[k])
+        .map((k) => `${k}\n${editFields[k]}`)
+        .join('\n');
+      setSummary(rebuilt || summary);
+      setSummaryEdited(true);
+      setEditFields({});
+    }
     setEditing(false);
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
@@ -575,12 +634,17 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.summaryBox}>
         <div style={s.summaryLabel}>Generative AI Session Summarization</div>
         {editing ? (
-          <textarea
-            style={s.summaryTextarea}
-            value={summary}
-            onChange={(e) => { setSummary(e.target.value); setSummaryEdited(true); }}
-            autoFocus
-          />
+          <div style={{ ...s.summaryText, padding: '10px 12px', background: colors.white, border: `2px solid ${colors.sapBlue}` }}>
+            {SUMMARY_DISPLAY_KEYS.map((k, idx) => (
+              <div key={k} style={{ ...s.summaryField, marginBottom: '10px' }}>
+                <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
+                <AutoTextarea
+                  value={editFields[k] || ''}
+                  onChange={(e) => { setEditFields((prev) => ({ ...prev, [k]: e.target.value })); setSummaryEdited(true); }}
+                />
+              </div>
+            ))}
+          </div>
         ) : (() => {
           const parsed = parseSummaryFields(summary);
           if (parsed) {
@@ -609,7 +673,7 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.btnRow}>
         <button
           style={s.btnEdit}
-          onClick={() => setEditing((v) => !v)}
+          onClick={editing ? handleCancelEdit : handleEnterEdit}
         >
           {editing ? 'Cancel' : 'Edit'}
         </button>
