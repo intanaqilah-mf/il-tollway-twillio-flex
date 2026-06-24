@@ -605,7 +605,7 @@ const SAICPanel = ({ task: taskProp }) => {
           </div>
         </div>
         <div style={s.fieldColRight}>
-          <div style={s.fieldLabel}>Sentiment Analysis (Pre-Call)</div>
+          <div style={s.fieldLabel}>Sentiment Analysis</div>
           <div style={s.sentimentValue}>
             {preCallSentiment ? (
               <>
@@ -660,7 +660,7 @@ const SAICPanel = ({ task: taskProp }) => {
       {/* Real-time Insights */}
       <div style={s.insightsBox}>
         <div style={s.insightTitle}>Real-time Insights</div>
-        <div style={s.sentimentLine}>Sentiment Analysis:</div>
+        <div style={s.sentimentLine}>Sentiment Analysis</div>
         <div style={s.sentimentValue}>
           {sentimentLabel ? (
             <>

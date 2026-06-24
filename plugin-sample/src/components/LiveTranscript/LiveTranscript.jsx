@@ -68,21 +68,6 @@ const s = {
     flexShrink: 0,
     animation: 'saic-pulse 1.4s ease-in-out infinite',
   },
-  headerActions: {
-    display: 'flex',
-    gap: '6px',
-  },
-  iconBtn: {
-    background: 'rgba(255,255,255,0.15)',
-    border: 'none',
-    color: colors.white,
-    borderRadius: '3px',
-    cursor: 'pointer',
-    fontSize: '12px',
-    padding: '3px 8px',
-    fontFamily: 'inherit',
-    lineHeight: '1.4',
-  },
   scrollArea: {
     flex: 1,
     overflowY: 'auto',
@@ -235,13 +220,6 @@ const LiveTranscript = ({ task: taskProp }) => {
 
   const callDuration = formatDuration(postCall?.callDurationSeconds);
 
-  const handleCopy = () => {
-    const text = messages
-      .map((m) => `[${m.time}] ${m.speaker}: ${m.text}`)
-      .join('\n');
-    navigator.clipboard.writeText(text);
-  };
-
   return (
     <div style={s.container}>
       {/* ── PULSE ANIMATION + ICON SIZING ── */}
@@ -262,10 +240,6 @@ const LiveTranscript = ({ task: taskProp }) => {
         <div style={s.headerLeft}>
           {!callEnded && <span style={s.liveDot} />}
           <span>Live Transcript</span>
-        </div>
-        <div style={s.headerActions}>
-          <button style={s.iconBtn} title="Copy transcript" onClick={handleCopy}>Copy</button>
-          <button style={s.iconBtn} title="Expand">⤢</button>
         </div>
       </div>
 
