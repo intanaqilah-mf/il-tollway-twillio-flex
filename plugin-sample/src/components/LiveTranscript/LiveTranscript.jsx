@@ -217,57 +217,21 @@ const LiveTranscript = ({ task: taskProp }) => {
 
   const { transcript: wsTranscript, postCall } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
-  const [inputText, setInputText] = useState('');
-  const [agentNotes, setAgentNotes] = useState([]);
   const callEnded = !task;
 
   // Normalize WebSocket entries to display format
-  const wsMessages = wsTranscript.map((entry) => ({
+  const messages = wsTranscript.map((entry) => ({
     id: entry.ts,
     speaker: entry.speaker === 'agent' ? 'Agent' : 'Customer',
     text: entry.transcript,
     time: formatTime(entry.ts),
-    isNote: false,
   }));
-
-  // Agent-typed notes appear after the live transcript
-  const messages = [...wsMessages, ...agentNotes];
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  // Clear notes when task changes
-  useEffect(() => {
-    setAgentNotes([]);
-    setInputText('');
-  }, [task?.taskSid]);
-
-  const handleSend = () => {
-    const text = inputText.trim();
-    if (!text) return;
-    const now = new Date();
-    setAgentNotes((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        speaker: 'Agent',
-        text,
-        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isNote: true,
-      },
-    ]);
-    setInputText('');
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
 
   const callDuration = formatDuration(postCall?.callDurationSeconds);
 
@@ -324,7 +288,7 @@ const LiveTranscript = ({ task: taskProp }) => {
               >
                 <div style={s.speakerRow}>
                   <span style={isAgent ? s.speakerAgent : s.speakerCustomer}>
-                    {msg.speaker}{msg.isNote ? ' (note)' : ''}
+                    {msg.speaker}
                   </span>
                   <span style={s.timestamp}>{msg.time}</span>
                 </div>
@@ -344,19 +308,6 @@ const LiveTranscript = ({ task: taskProp }) => {
         )}
       </div>
 
-      {/* Input bar (only shown when call is active) */}
-      {!callEnded && (
-        <div style={s.liveInput}>
-          <input
-            style={s.liveInputField}
-            placeholder="Type a note or response..."
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <button style={s.sendBtn} onClick={handleSend}>Send</button>
-        </div>
-      )}
     </div>
   );
 };

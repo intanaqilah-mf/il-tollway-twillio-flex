@@ -278,9 +278,17 @@ const s = {
 
 function getSentimentColor(label) {
   const l = (label || '').toLowerCase();
-  if (l.startsWith('pos')) return colors.sentimentGreen; // handles "Positive", "Possitive"
+  if (l.startsWith('pos')) return colors.sentimentGreen;
   if (l.startsWith('neg')) return colors.sentimentRed;
   return '#888780';
+}
+
+function normalizeSentiment(label) {
+  const l = (label || '').toLowerCase().trim();
+  if (l.startsWith('pos')) return 'Positive';
+  if (l.startsWith('neg')) return 'Negative';
+  if (l.startsWith('neu')) return 'Neutral';
+  return label;
 }
 
 function formatDuration(seconds) {
@@ -358,7 +366,7 @@ function AutoTextarea({ value, onChange }) {
   );
 }
 
-function StatedReasonValue({ value }) {
+function CopyableValue({ value, placeholder }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -369,7 +377,7 @@ function StatedReasonValue({ value }) {
     });
   };
 
-  if (!value) return <span style={{ color: colors.textSecondary, fontWeight: '400', fontStyle: 'italic' }}>—</span>;
+  if (!value) return <span style={{ color: colors.textSecondary, fontWeight: '400', fontStyle: 'italic' }}>{placeholder || '—'}</span>;
 
   return (
     <span
@@ -389,6 +397,9 @@ function StatedReasonValue({ value }) {
     </span>
   );
 }
+
+// Alias so the existing <StatedReasonValue> JSX is untouched
+const StatedReasonValue = ({ value }) => <CopyableValue value={value} />;
 
 const SAICPanel = ({ task: taskProp }) => {
   // Resolve task — use Flex-injected prop when available, otherwise fall back
@@ -539,13 +550,13 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColLeft}>
           <div style={s.fieldLabel}>Caller ID</div>
           <div style={s.fieldValue}>
-            {callerId || <Placeholder text="Waiting..." />}
+            <CopyableValue value={callerId} placeholder="Waiting..." />
           </div>
         </div>
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Account Number</div>
           <div style={s.fieldValue}>
-            {accountNumber || <Placeholder text="—" />}
+            <CopyableValue value={accountNumber} />
           </div>
         </div>
       </div>
@@ -568,7 +579,7 @@ const SAICPanel = ({ task: taskProp }) => {
               <>
                 <span style={{ ...s.sentimentDot, background: getSentimentColor(preCallSentiment) }} />
                 <span style={{ color: getSentimentColor(preCallSentiment), fontWeight: '700', fontSize: '13px' }}>
-                  {preCallSentiment}
+                  {normalizeSentiment(preCallSentiment)}
                 </span>
               </>
             ) : (
@@ -621,7 +632,7 @@ const SAICPanel = ({ task: taskProp }) => {
             <>
               <span style={{ ...s.sentimentDot, background: sentimentColor }} />
               <span style={{ color: sentimentColor, fontWeight: '700', fontSize: '13px' }}>
-                {sentimentLabel}
+                {normalizeSentiment(sentimentLabel)}
               </span>
             </>
           ) : (
