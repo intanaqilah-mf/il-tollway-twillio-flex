@@ -24,7 +24,17 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     );
 
     // CRM CONTAINER: live transcript (mock UI)
-    flex.CRMContainer.defaultProps.uriCallback = () => '';
+    // Use 'about:blank' instead of null — Twilio only shows the "Your customer data"
+    // promo when uriCallback returns falsy. A truthy URL renders an iframe instead.
+    flex.CRMContainer.defaultProps.uriCallback = () => 'about:blank';
+
+    // Inject CSS: hide the blank iframe so only LiveTranscript is visible
+    const crmStyle = document.createElement('style');
+    crmStyle.textContent = `
+      iframe[src="about:blank"] { display: none !important; height: 0 !important; min-height: 0 !important; }
+    `;
+    document.head.appendChild(crmStyle);
+
     flex.CRMContainer.Content.add(
       <LiveTranscript key="live-transcript" />,
       { sortOrder: -1 }

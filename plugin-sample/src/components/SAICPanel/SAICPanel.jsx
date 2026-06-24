@@ -258,6 +258,22 @@ const s = {
     fontFamily: 'inherit',
     transition: 'background 0.15s',
   },
+
+  // ── Two-column field rows ─────────────────────────────────────────
+  fieldRowDouble: {
+    padding: '10px 16px',
+    borderBottom: `1px solid ${colors.borderColor}`,
+    background: colors.white,
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+  },
+  fieldColLeft: {
+    paddingRight: '12px',
+    borderRight: `1px solid ${colors.borderColor}`,
+  },
+  fieldColRight: {
+    paddingLeft: '12px',
+  },
 };
 
 function getSentimentColor(label) {
@@ -281,6 +297,8 @@ const SUMMARY_LABELS = {
   resolution: 'Resolution',
   customer_satisfaction: 'Customer Satisfaction',
 };
+// Keys to show in UI — resolution and customer_satisfaction hidden until ready
+const SUMMARY_DISPLAY_KEYS = ['situation', 'action', /* 'resolution', 'customer_satisfaction' */];
 
 function parseSummaryFields(text) {
   if (!text) return null;
@@ -357,6 +375,12 @@ const SAICPanel = ({ task: taskProp }) => {
     attrs.caller ||
     null;
 
+  const accountNumber =
+    preCall?.accountNumber ||
+    attrs.accountNumber ||
+    attrs.account_number ||
+    null;
+
   const accountRef = taskSid ? taskSid.slice(-10) : null;
 
   const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
@@ -381,12 +405,11 @@ const SAICPanel = ({ task: taskProp }) => {
   const statedReason = preCall?.statedReason || attrs.statedReason || null;
   const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || null;
 
-  // Live sentiment takes priority over pre-call sentiment
-  const sentimentLabel =
-    sentiment?.sentimentLabel ||
-    preCall?.sentimentAnalysis ||
-    attrs.sentimentAnalysis ||
-    null;
+  // Pre-call sentiment — static from IVR handoff, shown in pre-call section
+  const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || null;
+
+  // Live sentiment — dynamic, updated during the call, shown in post-call section
+  const sentimentLabel = sentiment?.sentimentLabel || preCallSentiment || null;
   const sentimentColor = getSentimentColor(sentimentLabel);
 
   const postCallDuration = formatDuration(postCall?.callDurationSeconds);
@@ -410,20 +433,47 @@ const SAICPanel = ({ task: taskProp }) => {
         {accountRef && <span style={s.sectionBarMeta}>{accountRef}</span>}
       </div>
 
-      <div style={s.fieldRow}>
-        <div style={s.fieldLabel}>Caller ID</div>
-        <div style={s.fieldValue}>
-          {callerId || <Placeholder text="Waiting..." />}
+      {/* Caller ID | Account Number */}
+      <div style={s.fieldRowDouble}>
+        <div style={s.fieldColLeft}>
+          <div style={s.fieldLabel}>Caller ID</div>
+          <div style={s.fieldValue}>
+            {callerId || <Placeholder text="Waiting..." />}
+          </div>
+        </div>
+        <div style={s.fieldColRight}>
+          <div style={s.fieldLabel}>Account Number</div>
+          <div style={s.fieldValue}>
+            {accountNumber || <Placeholder text="—" />}
+          </div>
         </div>
       </div>
 
-      <div style={s.fieldRow}>
-        <div style={s.fieldLabel}>Authentication Status</div>
-        <div style={{ ...s.fieldValue, ...s.authRow }}>
-          <span style={{ ...s.authDot, background: authDotColor }} />
-          <span style={{ color: authTextColor, fontWeight: '600' }}>
-            {authLabel || <Placeholder text="—" />}
-          </span>
+      {/* Authentication Status | Sentiment Analysis (Pre-Call) */}
+      <div style={s.fieldRowDouble}>
+        <div style={s.fieldColLeft}>
+          <div style={s.fieldLabel}>Authentication Status</div>
+          <div style={{ ...s.fieldValue, ...s.authRow }}>
+            <span style={{ ...s.authDot, background: authDotColor }} />
+            <span style={{ color: authTextColor, fontWeight: '600' }}>
+              {authLabel || <Placeholder text="—" />}
+            </span>
+          </div>
+        </div>
+        <div style={s.fieldColRight}>
+          <div style={s.fieldLabel}>Sentiment Analysis (Pre-Call)</div>
+          <div style={s.sentimentValue}>
+            {preCallSentiment ? (
+              <>
+                <span style={{ ...s.sentimentDot, background: getSentimentColor(preCallSentiment) }} />
+                <span style={{ color: getSentimentColor(preCallSentiment), fontWeight: '700', fontSize: '13px' }}>
+                  {preCallSentiment}
+                </span>
+              </>
+            ) : (
+              <Placeholder text="—" />
+            )}
+          </div>
         </div>
       </div>
 
@@ -495,7 +545,7 @@ const SAICPanel = ({ task: taskProp }) => {
           if (parsed) {
             return (
               <div style={{ ...s.summaryText, padding: '10px 12px' }}>
-                {SUMMARY_KEYS.filter((k) => parsed[k]).map((k) => (
+                {SUMMARY_DISPLAY_KEYS.filter((k) => parsed[k]).map((k) => (
                   <div key={k} style={s.summaryField}>
                     <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
                     <div style={s.summaryFieldValue}>{parsed[k]}</div>

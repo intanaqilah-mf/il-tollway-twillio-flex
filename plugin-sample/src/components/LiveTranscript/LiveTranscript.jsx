@@ -34,7 +34,9 @@ const s = {
   container: {
     display: 'flex',
     flexDirection: 'column',
+    flex: 1,
     height: '100%',
+    minHeight: 0,
     fontFamily: '"72", "72full", Arial, Helvetica, sans-serif',
     fontSize: '13px',
     background: colors.white,
