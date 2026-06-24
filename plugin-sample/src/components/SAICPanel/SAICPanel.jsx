@@ -401,6 +401,38 @@ function CopyableValue({ value, placeholder }) {
 // Alias so the existing <StatedReasonValue> JSX is untouched
 const StatedReasonValue = ({ value }) => <CopyableValue value={value} />;
 
+// Copy-on-click for values inside the dark navy header (white text styling)
+function CopyableHeaderMeta({ value }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  return (
+    <span
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : 'Click to copy'}
+      style={{
+        fontSize: '11px',
+        fontWeight: '400',
+        letterSpacing: '0.2px',
+        opacity: copied ? 1 : 0.85,
+        whiteSpace: 'nowrap',
+        textTransform: 'none',
+        cursor: 'pointer',
+        borderBottom: '1px dashed rgba(255,255,255,0.5)',
+        color: copied ? '#7ecfb3' : 'inherit',
+        transition: 'color 0.2s',
+      }}
+    >
+      {copied ? 'Copied!' : value}
+    </span>
+  );
+}
+
 const SAICPanel = ({ task: taskProp }) => {
   // Resolve task — use Flex-injected prop when available, otherwise fall back
   // to the Flex Redux store. Panel1.Content doesn't always inject the task prop.
@@ -542,7 +574,7 @@ const SAICPanel = ({ task: taskProp }) => {
       {/* ── PRE-CALL SECTION ── */}
       <div style={s.sectionBar}>
         <span>Pre-Call Information</span>
-        {callerName && <span style={s.sectionBarMeta}>{callerName}</span>}
+        {callerName && <CopyableHeaderMeta value={callerName} />}
       </div>
 
       {/* Caller ID | Account Number */}
@@ -618,7 +650,9 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.sectionBar}>
         <span>Post-Call Wrap-Up</span>
         <span style={s.sectionBarMeta}>
-          {callerName ? `${callerName}${postCallDuration ? ` | ${postCallDuration}` : ''}` : (postCallDuration || '')}
+          {callerName
+            ? <><CopyableHeaderMeta value={callerName} />{postCallDuration ? ` | ${postCallDuration}` : ''}</>
+            : (postCallDuration || '')}
         </span>
       </div>
       <div style={s.sectionSubtitle}>Pre-populated information from an IVR handoff</div>
