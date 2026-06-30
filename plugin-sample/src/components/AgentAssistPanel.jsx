@@ -18,14 +18,6 @@ const AgentAssistPanel = ({ task }) => {
     }
   }, [transcript]);
 
-  if (!task) {
-    return (
-      <div className="aap-container">
-        <div className="aap-empty-state">No active call</div>
-      </div>
-    );
-  }
-
   return (
     <div className="aap-container">
       {/* Live Transcript — chat bubbles only */}
@@ -36,7 +28,9 @@ const AgentAssistPanel = ({ task }) => {
 
         <div className="aap-transcript-list">
           {transcript.length === 0 ? (
-            <div className="aap-transcript-empty">Waiting for transcript...</div>
+            <div className="aap-transcript-empty">
+              {task ? 'Waiting for transcript...' : 'No active call'}
+            </div>
           ) : (
             transcript.map((entry, i) => {
               const isAgent = entry.speaker === 'agent';

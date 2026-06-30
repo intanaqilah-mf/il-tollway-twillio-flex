@@ -73,10 +73,10 @@
 .aap-section-header {
   background: #1a3352;
   color: #ffffff;
-  padding: 8px 16px;
-  font-size: 11px;
+  padding: 10px 16px;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
   user-select: none;
 }
