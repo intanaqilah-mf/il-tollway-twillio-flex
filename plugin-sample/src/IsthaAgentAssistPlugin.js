@@ -13,40 +13,38 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
   }
 
   async init(flex, manager) {
-    // Token sanity check — must log "string eyJ..." to confirm raw JWT
-    const t = Manager.getInstance().store.getState().flex.session.ssoTokenPayload;
+    console.log('[IsthaAgentAssistPlugin] init called');
+
+    // Force Panel2 visible by default — agents shouldn't need to toggle it manually
+    flex.AgentDesktopView.defaultProps = {
+      ...flex.AgentDesktopView.defaultProps,
+      showPanel2: true,
+    };
+
+    // Token sanity check — logs "string eyJ..." to confirm raw JWT
+    const t = Manager.getInstance().user?.token;
     console.log('[AA] token type on load:', typeof t, String(t).slice(0, 15));
 
-    // LEFT PANEL: pre-call + post-call wrap-up (mock UI)
+    // LEFT PANEL: pre-call + post-call wrap-up
     flex.AgentDesktopView.Panel1.Content.add(
       <SAICPanel key="saic-panel" />,
       { sortOrder: -1 }
     );
+    console.log('[IsthaAgentAssistPlugin] SAICPanel registered in Panel1');
 
-    // CRM CONTAINER: live transcript (mock UI)
-    // Use 'about:blank' instead of null — Twilio only shows the "Your customer data"
-    // promo when uriCallback returns falsy. A truthy URL renders an iframe instead.
-    flex.CRMContainer.defaultProps.uriCallback = () => 'about:blank';
-
-    // Inject CSS: hide the blank iframe so only LiveTranscript is visible
-    const crmStyle = document.createElement('style');
-    crmStyle.textContent = `
-      iframe[src="about:blank"] { display: none !important; height: 0 !important; min-height: 0 !important; }
-    `;
-    document.head.appendChild(crmStyle);
-
-    flex.CRMContainer.Content.add(
+    // PANEL 2: live transcript — withTaskContext injects task reliably
+    // no if() condition — withTaskContext + internal check handles empty state
+    flex.AgentDesktopView.Panel2.Content.add(
       <LiveTranscript key="live-transcript" />,
-      { sortOrder: -1 }
+      { sortOrder: 0 }
     );
+    console.log('[IsthaAgentAssistPlugin] LiveTranscript registered in Panel2');
 
-    // RIGHT PANEL 2: WebSocket-driven agent assist
+    // PANEL 2: agent assist — no if() condition per Twilio support guidance
     flex.AgentDesktopView.Panel2.Content.add(
       <AgentAssistPanel key="istha-agent-assist" />,
-      {
-        sortOrder: -1,
-        if: (props) => props.task !== undefined,
-      }
+      { sortOrder: 1 }
     );
+    console.log('[IsthaAgentAssistPlugin] AgentAssistPanel registered in Panel2');
   }
 }

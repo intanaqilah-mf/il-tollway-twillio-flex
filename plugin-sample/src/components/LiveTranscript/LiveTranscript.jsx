@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Manager } from '@twilio/flex-ui';
+import { Manager, withTaskContext } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 import { CallFailedIcon } from '@twilio-paste/icons/esm/CallFailedIcon';
 
@@ -186,23 +186,33 @@ function formatDuration(seconds) {
 }
 
 const LiveTranscript = ({ task: taskProp }) => {
-  // CRMContainer.Content may not inject the task prop — fall back to Flex store
+  // withTaskContext may not inject task in Panel2 (deployed) — fall back to Flex store
   const [task, setTask] = useState(() => taskProp || getFlexTask());
+  // true only before we've had a chance to read the store — prevents "call ended" flash
+  const [loading, setLoading] = useState(!taskProp && !getFlexTask());
 
   useEffect(() => {
+    console.log('[LiveTranscript] mount — taskProp:', taskProp?.taskSid ?? null, '| storeTask:', getFlexTask()?.taskSid ?? null);
     if (taskProp) {
       setTask(taskProp);
+      setLoading(false);
       return;
     }
-    setTask(getFlexTask());
+    const fromStore = getFlexTask();
+    setTask(fromStore);
+    setLoading(false);
     try {
-      return Manager.getInstance().store.subscribe(() => setTask(getFlexTask()));
+      return Manager.getInstance().store.subscribe(() => {
+        const t = getFlexTask();
+        setTask(t);
+        setLoading(false);
+      });
     } catch { return undefined; }
   }, [taskProp]);
 
   const { transcript: wsTranscript, postCall } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
-  const callEnded = !task;
+  const callEnded = !loading && !task;
 
   // Normalize WebSocket entries to display format
   const messages = wsTranscript.map((entry) => ({
@@ -286,4 +296,4 @@ const LiveTranscript = ({ task: taskProp }) => {
   );
 };
 
-export default LiveTranscript;
+export default withTaskContext(LiveTranscript);

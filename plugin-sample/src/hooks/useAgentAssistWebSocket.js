@@ -312,7 +312,7 @@ export function useAgentAssistWebSocket(task) {
 
     // If component mounts mid-call (e.g. panel re-render during active call),
     // the afterAcceptTask event already fired — open immediately.
-    const alreadyActive = task?.status === 'assigned' || task?.status === 'wrapping';
+    const alreadyActive = ['assigned', 'accepted', 'wrapping'].includes(task?.status);
     if (alreadyActive && !entry.ws) {
       openConnection(taskSid);
     }

@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { withTaskContext } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../hooks/useAgentAssistWebSocket';
 import './AgentAssistPanel.css';
 
@@ -168,4 +169,4 @@ const AgentAssistPanel = ({ task }) => {
   );
 };
 
-export default AgentAssistPanel;
+export default withTaskContext(AgentAssistPanel);
