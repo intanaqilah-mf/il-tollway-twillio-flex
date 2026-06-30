@@ -25,6 +25,13 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     const t = Manager.getInstance().user?.token;
     console.log('[AA] token type on load:', typeof t, String(t).slice(0, 15));
 
+    // Suppress the Unified Profiles promo that Flex shows in Panel2 by default.
+    // LiveTranscript lives in Panel2.Content (a separate slot), so this is safe.
+    flex.CRMContainer.Content.replace(
+      <div key="crm-suppressed" />,
+      { sortOrder: -Infinity }
+    );
+
     // LEFT PANEL: pre-call + post-call wrap-up
     flex.AgentDesktopView.Panel1.Content.add(
       <SAICPanel key="saic-panel" />,
