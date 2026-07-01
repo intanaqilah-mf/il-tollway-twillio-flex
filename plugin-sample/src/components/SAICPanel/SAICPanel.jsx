@@ -549,6 +549,17 @@ const SAICPanel = ({ task: taskProp }) => {
     setEditFields({});
   };
 
+  const handleSave = () => {
+    const rebuilt = SUMMARY_KEYS
+      .filter((k) => editFields[k])
+      .map((k) => `${k}\n${editFields[k]}`)
+      .join('\n');
+    setSummary(rebuilt || summary);
+    setSummaryEdited(true);
+    setEditFields({});
+    setEditing(false);
+  };
+
   const handleSubmit = () => {
     if (editing) {
       const rebuilt = SUMMARY_KEYS
@@ -722,16 +733,22 @@ const SAICPanel = ({ task: taskProp }) => {
         >
           {editing ? 'Cancel' : 'Edit'}
         </button>
-        <button
-          style={{
-            ...s.btnSubmit,
-            background: submitted ? '#107e3e' : colors.sapBlue,
-          }}
-          onClick={handleSubmit}
-          disabled={submitted}
-        >
-          {submitted ? 'Submitted!' : 'Submit to SAP'}
-        </button>
+        {editing ? (
+          <button style={s.btnSubmit} onClick={handleSave}>
+            Save
+          </button>
+        ) : (
+          <button
+            style={{
+              ...s.btnSubmit,
+              background: submitted ? '#107e3e' : colors.sapBlue,
+            }}
+            onClick={handleSubmit}
+            disabled={submitted}
+          >
+            {submitted ? 'Submitted!' : 'Submit to SAP'}
+          </button>
+        )}
       </div>
     </div>
   );

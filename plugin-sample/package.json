@@ -1,6 +1,6 @@
 {
   "name": "plugin-sample",
-  "version": "4.0.20",
+  "version": "4.0.25",
   "private": true,
   "scripts": {
     "postinstall": "flex-plugin pre-script-check"
