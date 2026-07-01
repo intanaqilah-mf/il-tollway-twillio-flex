@@ -497,10 +497,11 @@ const SAICPanel = ({ task: taskProp }) => {
     preCall?.accountNumber ||
     attrs.accountNumber ||
     attrs.account_number ||
-    attrs.account_sid ||
+    attrs.AccountNumber ||
     null;
 
   const callerName = preCall?.callerName || attrs.callerName || attrs.name || null;
+  const accountName = preCall?.accountName || attrs.accountName || null;
 
   const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
   const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified' || authStatus === 'true';
@@ -585,7 +586,7 @@ const SAICPanel = ({ task: taskProp }) => {
       {/* ── PRE-CALL SECTION ── */}
       <div style={s.sectionBar}>
         <span>Pre-Call Information</span>
-        {callerName && <CopyableHeaderMeta value={callerName} />}
+        {accountName && <CopyableHeaderMeta value={accountName} />}
       </div>
 
       {/* Caller ID | Account Number */}
@@ -661,8 +662,8 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.sectionBar}>
         <span>Post-Call Wrap-Up</span>
         <span style={s.sectionBarMeta}>
-          {callerName
-            ? <><CopyableHeaderMeta value={callerName} />{postCallDuration ? ` | ${postCallDuration}` : ''}</>
+          {accountName
+            ? <><CopyableHeaderMeta value={accountName} />{postCallDuration ? ` | ${postCallDuration}` : ''}</>
             : (postCallDuration || '')}
         </span>
       </div>
