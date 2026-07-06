@@ -185,15 +185,6 @@ function formatDuration(seconds) {
   return `${m}m ${s}s`;
 }
 
-// Speech-to-text often mishears "i-Pass" as iPad / "I pass" / "I passed"
-function normalizeTranscript(text) {
-  if (!text) return text ?? '';
-  const result = text
-    .replace(/\bipad\b/gi, 'i-Pass')
-    .replace(/\bi[\s-]?pass(?:ed)?\b/gi, 'i-Pass');
-  if (result !== text) console.log('[normalizeTranscript] replaced:', text, '→', result);
-  return result;
-}
 
 const LiveTranscript = ({ task: taskProp }) => {
   // withTaskContext may not inject task in Panel2 (deployed) — fall back to Flex store
@@ -224,11 +215,10 @@ const LiveTranscript = ({ task: taskProp }) => {
   const scrollRef = useRef(null);
   const callEnded = !loading && !task;
 
-  // Normalize WebSocket entries to display format
   const messages = wsTranscript.map((entry) => ({
     id: entry.ts,
     speaker: entry.speaker === 'agent' ? 'Agent' : 'Customer',
-    text: normalizeTranscript(entry.transcript),
+    text: entry.transcript,
     time: formatTime(entry.ts),
   }));
 

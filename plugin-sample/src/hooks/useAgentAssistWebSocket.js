@@ -32,6 +32,16 @@ const CARD_REQUEST_RE = new RegExp(
 );
 
 
+// Speech-to-text often mishears "i-Pass" as: iPad, IPad, iPass, ipass, i pass, i-pass
+function normalizeTranscript(text) {
+  if (!text) return text ?? '';
+  return text
+    .replace(/\bipad\b/gi, 'i-Pass')
+    .replace(/\bipass\b/gi, 'i-Pass')
+    .replace(/\bi-pass\b/gi, 'i-Pass')
+    .replace(/\bi pass\b/gi, 'i-Pass');
+}
+
 // Called only for turns outside a known card-data context.
 // Catches formatted card numbers that appear incidentally (e.g. agent repeating back).
 function redactSensitiveData(text) {
@@ -159,7 +169,7 @@ function openConnection(taskSid) {
         // selective regex fails. Full replacement is also PCI-DSS aligned.
         const redacted = inCardContext
           ? '[card data not logged]'
-          : redactSensitiveData(p.transcript);
+          : normalizeTranscript(redactSensitiveData(p.transcript));
         if (p.speaker === 'agent' && CARD_REQUEST_RE.test(p.transcript)) {
           // Each agent card-data request resets the counter to 2 — protects the direct
           // reply plus one overflow turn in case the next agent trigger is misheard
