@@ -185,6 +185,11 @@ function formatDuration(seconds) {
   return `${m}m ${s}s`;
 }
 
+// Speech-to-text often mishears "i-Pass" as iPad / "I pass" / "I passed"
+function normalizeTranscript(text) {
+  return text.replace(/\bipad\b|\bI\s+pass(?:ed)?\b/gi, 'i-Pass');
+}
+
 const LiveTranscript = ({ task: taskProp }) => {
   // withTaskContext may not inject task in Panel2 (deployed) — fall back to Flex store
   const [task, setTask] = useState(() => taskProp || getFlexTask());
@@ -218,7 +223,7 @@ const LiveTranscript = ({ task: taskProp }) => {
   const messages = wsTranscript.map((entry) => ({
     id: entry.ts,
     speaker: entry.speaker === 'agent' ? 'Agent' : 'Customer',
-    text: entry.transcript,
+    text: normalizeTranscript(entry.transcript),
     time: formatTime(entry.ts),
   }));
 
