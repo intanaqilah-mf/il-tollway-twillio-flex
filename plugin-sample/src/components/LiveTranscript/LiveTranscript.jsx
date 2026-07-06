@@ -187,7 +187,12 @@ function formatDuration(seconds) {
 
 // Speech-to-text often mishears "i-Pass" as iPad / "I pass" / "I passed"
 function normalizeTranscript(text) {
-  return text.replace(/\bipad\b|\bI\s+pass(?:ed)?\b/gi, 'i-Pass');
+  if (!text) return text ?? '';
+  const result = text
+    .replace(/\bipad\b/gi, 'i-Pass')
+    .replace(/\bi[\s-]?pass(?:ed)?\b/gi, 'i-Pass');
+  if (result !== text) console.log('[normalizeTranscript] replaced:', text, '→', result);
+  return result;
 }
 
 const LiveTranscript = ({ task: taskProp }) => {
