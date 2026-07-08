@@ -1,0 +1,245 @@
+/* ── Outer container ────────────────────────────────────────────── */
+.aap-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: "72", "72full", Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  background: #f0f0ee;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: #32363a;
+}
+
+/* ── Panel header ───────────────────────────────────────────────── */
+.aap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1a3352;
+  color: #ffffff;
+  padding: 10px 16px;
+  flex-shrink: 0;
+}
+
+.aap-header-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ── Connection status dot ──────────────────────────────────────── */
+.aap-conn-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.aap-conn-dot--green { background: #1D9E75; }
+.aap-conn-dot--grey  { background: #888780; }
+.aap-conn-dot--red   { background: #D85A30; }
+
+/* ── Mock data badge ────────────────────────────────────────────── */
+.aap-mock-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  background: #D85A30;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* ── Empty state ────────────────────────────────────────────────── */
+.aap-empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888780;
+  font-size: 14px;
+}
+
+/* ── Section wrapper ────────────────────────────────────────────── */
+.aap-section {
+  border-bottom: 1px solid #d9d9d7;
+  flex-shrink: 0;
+}
+
+/* ── Section headers ────────────────────────────────────────────── */
+.aap-section-header {
+  background: #1a3352;
+  color: #ffffff;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.aap-section-header--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ── Field rows ─────────────────────────────────────────────────── */
+.aap-field-row {
+  display: flex;
+  gap: 8px;
+  padding: 7px 16px;
+  border-bottom: 1px solid #e8e8e6;
+  background: #f5f5f3;
+  align-items: flex-start;
+}
+
+.aap-field-label {
+  font-size: 11px;
+  color: #6a6d70;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  min-width: 110px;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.aap-field-value {
+  color: #32363a;
+  font-weight: 500;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* ── Sentiment indicator ────────────────────────────────────────── */
+.aap-sentiment-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.aap-sentiment-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.aap-sentiment-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ── Transcript list ────────────────────────────────────────────── */
+.aap-transcript-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f5f5f3;
+}
+
+.aap-transcript-empty {
+  color: #888780;
+  font-style: italic;
+  font-size: 12px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* ── Chat bubbles ───────────────────────────────────────────────── */
+.aap-bubble {
+  max-width: 88%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #d9d9d7;
+  line-height: 1.5;
+}
+
+.aap-bubble--customer {
+  align-self: flex-start;
+  background: #f0f0ee;
+}
+
+.aap-bubble--agent {
+  align-self: flex-end;
+  background: #dbeeff;
+  border-color: #b8d4f5;
+}
+
+.aap-bubble-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.aap-bubble-speaker {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6a6d70;
+}
+
+.aap-bubble--agent .aap-bubble-speaker {
+  color: #0070b9;
+}
+
+.aap-bubble-time {
+  font-size: 10px;
+  color: #888780;
+}
+
+.aap-bubble-text {
+  font-size: 13px;
+  color: #32363a;
+}
+
+/* ── Post-call body ─────────────────────────────────────────────── */
+.aap-postcall-body {
+  padding: 12px 16px;
+  background: #f5f5f3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aap-postcall-summary {
+  margin: 0;
+  color: #32363a;
+  line-height: 1.6;
+  background: #ebebea;
+  border: 1px solid #d9d9d7;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+/* ── Copy button ────────────────────────────────────────────────── */
+.aap-copy-btn {
+  align-self: flex-start;
+  padding: 6px 16px;
+  background: #0070b9;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: background 0.15s;
+  margin-top: 4px;
+}
+
+.aap-copy-btn:hover {
+  background: #005a94;
+}

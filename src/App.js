@@ -1,24 +1,27 @@
-import logo from './logo.svg';
+import React from 'react';
+import { CallProvider } from './context/CallContext';
+import SAICPanel from './components/SAICPanel/SAICPanel';
+import LiveTranscript from './components/LiveTranscript/LiveTranscript';
+import AgentAssistPanel from './components/AgentAssistPanel/AgentAssistPanel';
 import './App.css';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <CallProvider>
+      <div className="app-layout">
+        <div className="panel panel-left">
+          <SAICPanel />
+        </div>
+        <div className="panel panel-right">
+          <div className="panel-right-top">
+            <LiveTranscript />
+          </div>
+          <div className="panel-right-bottom">
+            <AgentAssistPanel />
+          </div>
+        </div>
+      </div>
+    </CallProvider>
   );
 }
 
