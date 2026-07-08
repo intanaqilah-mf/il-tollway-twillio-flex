@@ -1,9 +1,9 @@
 # Stage 1: build (SAP UI5 via @ui5/cli)
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY plugin-sample/package.json plugin-sample/package-lock.json ./
 RUN npm ci
-COPY . .
+COPY plugin-sample/ .
 RUN npm run build
 
 # Stage 2: serve
