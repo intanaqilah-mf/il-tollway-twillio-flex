@@ -5,7 +5,7 @@ import LiveTranscript from './components/LiveTranscript/LiveTranscript';
 import './App.css';
 
 function App() {
-  const [leftWidth, setLeftWidth] = useState(38); // percentage
+  const [leftWidth, setLeftWidth] = useState(50); // percentage
   const dragging = useRef(false);
 
   const onMouseDown = useCallback(() => {
