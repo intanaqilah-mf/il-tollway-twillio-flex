@@ -16,38 +16,32 @@ html, body, #root {
   font-family: "72", "72full", Arial, Helvetica, sans-serif;
 }
 
-/* Left panel — SAICPanel (pre-call info + post-call wrap-up) */
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
 .panel-left {
-  width: 380px;
   flex-shrink: 0;
-  border-right: 1px solid #e0e0e0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  border-right: none; /* divider handles the border */
 }
 
-/* Right panel — split vertically between LiveTranscript and AgentAssistPanel */
 .panel-right {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.panel-right-top {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-bottom: 1px solid #e0e0e0;
+/* Drag handle between panels */
+.resize-handle {
+  width: 5px;
+  flex-shrink: 0;
+  background: #e0e0e0;
+  cursor: col-resize;
+  transition: background 0.15s;
 }
 
-.panel-right-bottom {
-  flex: 0 0 auto;
-  max-height: 45%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+.resize-handle:hover,
+.resize-handle:active {
+  background: #0070b9;
 }
