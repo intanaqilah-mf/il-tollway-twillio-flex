@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Tag, TextArea } from '@ui5/webcomponents-react';
+import { Button, Tag } from '@ui5/webcomponents-react';
 import { useCallContext } from '../../context/CallContext';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
@@ -253,13 +253,34 @@ function parseSummaryFields(text) {
 }
 
 function AutoTextarea({ value, onChange }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.height = 'auto';
+    ref.current.style.height = ref.current.scrollHeight + 'px';
+  }, [value]);
   return (
-    <TextArea
+    <textarea
+      ref={ref}
       value={value}
-      onInput={(e) => onChange({ target: { value: e.target.value } })}
-      growing
+      onChange={onChange}
       rows={1}
-      style={{ width: '100%', boxSizing: 'border-box' }}
+      style={{
+        width: '100%',
+        boxSizing: 'border-box',
+        color: colors.textPrimary,
+        lineHeight: '1.6',
+        background: colors.white,
+        border: `1px solid ${colors.sapBlue}`,
+        borderRadius: '3px',
+        padding: '4px 6px',
+        fontSize: '13px',
+        fontFamily: 'inherit',
+        outline: 'none',
+        overflow: 'hidden',
+        resize: 'none',
+        minHeight: '24px',
+      }}
     />
   );
 }
