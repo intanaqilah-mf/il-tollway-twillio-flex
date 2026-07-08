@@ -37,6 +37,7 @@ function normalizeTranscript(text) {
   if (!text) return text ?? '';
   return text
     .replace(/\bipad\b/gi, 'i-Pass')
+    .replace(/\bipod\b/gi, 'i-Pass')
     .replace(/\bipass\b/gi, 'i-Pass')
     .replace(/\bi-pass\b/gi, 'i-Pass')
     .replace(/\bi pass\b/gi, 'i-Pass');
