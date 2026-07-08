@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Button, Tag, TextArea } from '@ui5/webcomponents-react';
 import { useCallContext } from '../../context/CallContext';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
@@ -100,15 +101,6 @@ const s = {
     gap: '6px',
     marginTop: '4px',
   },
-  tag: {
-    background: colors.intentBlueBg,
-    color: colors.intentBlue,
-    padding: '3px 10px',
-    borderRadius: '12px',
-    fontSize: '12px',
-    fontWeight: '600',
-    border: `1px solid #b8d4f5`,
-  },
   insightsBox: {
     padding: '10px 16px',
     borderBottom: `1px solid ${colors.borderColor}`,
@@ -188,32 +180,6 @@ const s = {
     background: colors.sectionBg,
     flexShrink: 0,
   },
-  btnEdit: {
-    flex: 1,
-    padding: '8px 0',
-    background: colors.white,
-    color: colors.navyHeader,
-    border: `1px solid ${colors.navyHeader}`,
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '600',
-    fontFamily: 'inherit',
-    transition: 'background 0.15s',
-  },
-  btnSubmit: {
-    flex: 2,
-    padding: '8px 0',
-    background: colors.sapBlue,
-    color: colors.white,
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '600',
-    fontFamily: 'inherit',
-    transition: 'background 0.15s',
-  },
   fieldRowDouble: {
     padding: '10px 16px',
     borderBottom: `1px solid ${colors.borderColor}`,
@@ -287,34 +253,13 @@ function parseSummaryFields(text) {
 }
 
 function AutoTextarea({ value, onChange }) {
-  const ref = React.useRef(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    ref.current.style.height = 'auto';
-    ref.current.style.height = ref.current.scrollHeight + 'px';
-  }, [value]);
   return (
-    <textarea
-      ref={ref}
+    <TextArea
       value={value}
-      onChange={onChange}
+      onInput={(e) => onChange({ target: { value: e.target.value } })}
+      growing
       rows={1}
-      style={{
-        width: '100%',
-        boxSizing: 'border-box',
-        color: colors.textPrimary,
-        lineHeight: '1.6',
-        background: colors.white,
-        border: `1px solid ${colors.sapBlue}`,
-        borderRadius: '3px',
-        padding: '4px 6px',
-        fontSize: '13px',
-        fontFamily: 'inherit',
-        outline: 'none',
-        overflow: 'hidden',
-        resize: 'none',
-        minHeight: '24px',
-      }}
+      style={{ width: '100%', boxSizing: 'border-box' }}
     />
   );
 }
@@ -566,7 +511,7 @@ const SAICPanel = () => {
           <div style={s.tagWrap}>
             {intents.length > 0
               ? intents.map((intent) => (
-                  <span key={intent} style={s.tag}>{intent}</span>
+                  <Tag key={intent} colorScheme="6">{intent}</Tag>
                 ))
               : <Placeholder text="—" />
             }
@@ -652,27 +597,26 @@ const SAICPanel = () => {
       </div>
 
       <div style={s.btnRow}>
-        <button
-          style={s.btnEdit}
+        <Button
+          design="Default"
           onClick={editing ? handleCancelEdit : handleEnterEdit}
+          style={{ flex: 1 }}
         >
           {editing ? 'Cancel' : 'Edit'}
-        </button>
+        </Button>
         {editing ? (
-          <button style={s.btnSubmit} onClick={handleSave}>
+          <Button design="Emphasized" onClick={handleSave} style={{ flex: 2 }}>
             Save
-          </button>
+          </Button>
         ) : (
-          <button
-            style={{
-              ...s.btnSubmit,
-              background: submitted ? '#107e3e' : colors.sapBlue,
-            }}
+          <Button
+            design={submitted ? 'Positive' : 'Emphasized'}
             onClick={handleSubmit}
             disabled={submitted}
+            style={{ flex: 2 }}
           >
             {submitted ? 'Submitted!' : 'Submit to SAP'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
