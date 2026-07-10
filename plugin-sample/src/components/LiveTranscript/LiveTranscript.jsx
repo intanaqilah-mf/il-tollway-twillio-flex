@@ -211,7 +211,7 @@ const LiveTranscript = ({ task: taskProp }) => {
     } catch { return undefined; }
   }, [taskProp]);
 
-  const { transcript: wsTranscript, postCall } = useAgentAssistWebSocket(task);
+  const { transcript: wsTranscript, postCall, connected, error } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
   const callEnded = !loading && !task;
 
@@ -248,16 +248,33 @@ const LiveTranscript = ({ task: taskProp }) => {
       {/* Header */}
       <div style={s.header}>
         <div style={s.headerLeft}>
-          {!callEnded && <span style={s.liveDot} />}
+          <span style={{
+            ...s.liveDot,
+            background: callEnded
+              ? '#888780'
+              : connected
+                ? colors.liveIndicator
+                : (error ? '#bb0000' : '#f0a500'),
+            animation: connected && !callEnded ? 'saic-pulse 1.4s ease-in-out infinite' : 'none',
+          }} />
           <span>Live Transcript</span>
         </div>
+        <span style={{ fontSize: '10px', fontWeight: '400', opacity: 0.75 }}>
+          {callEnded ? 'Call ended' : connected ? 'Connected' : (error ? 'Error' : 'Connecting...')}
+        </span>
       </div>
 
       {/* Messages */}
       <div style={s.scrollArea} ref={scrollRef}>
         {messages.length === 0 ? (
           <div style={s.emptyState}>
-            {callEnded ? 'No transcript available.' : 'Waiting for transcript...'}
+            {callEnded
+              ? 'Call ended — no transcript available.'
+              : error
+                ? `WebSocket error: ${error}`
+                : connected
+                  ? 'Connected — waiting for speech...'
+                  : 'Connecting to relay server...'}
           </div>
         ) : (
           messages.map((msg) => {

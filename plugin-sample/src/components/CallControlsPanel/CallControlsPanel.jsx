@@ -15,14 +15,8 @@ function getFlexTask() {
 const colors = {
   navy: '#1a3352',
   white: '#ffffff',
-  blue: '#0070b9',
-  green: '#107e3e',
-  red: '#bb0000',
   border: '#e0e0e0',
-  bg: '#f5f6f7',
   textPrimary: '#32363a',
-  textMuted: '#6a6d70',
-  textLabel: '#8c8c8c',
 };
 
 // ── Inline SVG icons ──────────────────────────────────────────────────
@@ -58,12 +52,6 @@ const PlayIcon = ({ size = 18 }) => (
   </svg>
 );
 
-const EndCallIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M20.49 15c-0.28-2.35-1.35-4.5-3.09-6.23C15.65 7.03 13.44 6 11.08 5.71L9.28 3.91A19.4 19.4 0 0 1 12 3.75c5.63 0 10.56 3.6 12 9-.36 1.34-1.11 2.88-2.4 3.96L20.49 15zM3.51 9c.28 2.35 1.35 4.5 3.09 6.23C8.35 16.97 10.56 18 12.92 18.29l1.8 1.8A19.4 19.4 0 0 1 12 20.25C6.37 20.25 1.44 16.65 0 11.25c.36-1.34 1.11-2.88 2.4-3.96L3.51 9z"/>
-    <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-  </svg>
-);
 
 const TransferIcon = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -134,11 +122,6 @@ const CallControlsPanel = () => {
     setIsOnHold((v) => !v);
   };
 
-  const handleHangup = () => {
-    if (!task) return;
-    try { Actions.invokeAction('HangupCall', { sid: task.taskSid || task.sid }); } catch {}
-  };
-
   const handleTransfer = () => {
     if (!task) return;
     // Try Flex's built-in transfer actions in order of preference
@@ -148,8 +131,6 @@ const CallControlsPanel = () => {
     }
   };
 
-  const attrs = task?.attributes || {};
-  const callerId = attrs.from || attrs.caller || null;
   const hasCall = !!task;
 
   return (
@@ -178,35 +159,6 @@ const CallControlsPanel = () => {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-        {/* Status */}
-        <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '10px 12px' }}>
-          <div style={{ fontSize: '10px', color: colors.textLabel, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '5px' }}>
-            Status
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0,
-              background: hasCall ? colors.green : '#cccccc',
-              animation: hasCall ? 'ctrl-pulse 1.8s ease-in-out infinite' : 'none',
-            }} />
-            <span style={{ fontWeight: '600', color: hasCall ? colors.green : colors.textMuted }}>
-              {hasCall ? 'Live Call' : 'No Active Call'}
-            </span>
-          </div>
-        </div>
-
-        {/* Caller */}
-        {callerId && (
-          <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '10px 12px' }}>
-            <div style={{ fontSize: '10px', color: colors.textLabel, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '3px' }}>
-              Caller
-            </div>
-            <div style={{ fontWeight: '600', color: colors.textPrimary, fontSize: '13px' }}>{callerId}</div>
-          </div>
-        )}
-
-        <div style={{ borderTop: `1px solid ${colors.border}` }} />
-
         {/* Mute */}
         <CtrlBtn
           onClick={handleMute}
@@ -234,24 +186,8 @@ const CallControlsPanel = () => {
           label="Transfer"
         />
 
-        <div style={{ borderTop: `1px solid ${colors.border}` }} />
-
-        {/* Hang Up */}
-        <CtrlBtn
-          onClick={handleHangup}
-          disabled={!hasCall}
-          danger
-          icon={<EndCallIcon />}
-          label="Hang Up"
-        />
       </div>
 
-      <style>{`
-        @keyframes ctrl-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-      `}</style>
     </div>
   );
 };
