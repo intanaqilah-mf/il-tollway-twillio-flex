@@ -1,9 +1,7 @@
 import { FlexPlugin } from '@twilio/flex-plugin';
 import { Manager } from '@twilio/flex-ui';
 import React from 'react';
-import SAICPanel from './components/SAICPanel/SAICPanel';
-import LiveTranscript from './components/LiveTranscript/LiveTranscript';
-import AgentAssistPanel from './components/AgentAssistPanel';
+import ThreeColumnLayout from './components/ThreeColumnLayout/ThreeColumnLayout';
 
 const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
 
@@ -15,10 +13,10 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
   async init(flex, manager) {
     console.log('[IsthaAgentAssistPlugin] init called');
 
-    // Force Panel2 visible by default — agents shouldn't need to toggle it manually
+    // Hide Panel2 — everything lives in the 3-column layout inside Panel1
     flex.AgentDesktopView.defaultProps = {
       ...flex.AgentDesktopView.defaultProps,
-      showPanel2: true,
+      showPanel2: false,
     };
 
     // Token sanity check — logs "string eyJ..." to confirm raw JWT
@@ -26,32 +24,28 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     console.log('[AA] token type on load:', typeof t, String(t).slice(0, 15));
 
     // Suppress the Unified Profiles promo that Flex shows in Panel2 by default.
-    // LiveTranscript lives in Panel2.Content (a separate slot), so this is safe.
     flex.CRMContainer.Content.replace(
       <div key="crm-suppressed" />,
       { sortOrder: -Infinity }
     );
 
-    // LEFT PANEL: pre-call + post-call wrap-up
+    // Suppress the native CallCanvas (the bottom call control bar) —
+    // we render our own call controls in the left column.
+    try {
+      flex.CallCanvas.defaultProps = { ...flex.CallCanvas.defaultProps, hidden: true };
+    } catch {}
+    try {
+      flex.AgentDesktopView.Panel2.Content.replace(
+        <div key="panel2-empty" style={{ display: 'none' }} />,
+        { sortOrder: -Infinity }
+      );
+    } catch {}
+
+    // PANEL 1: 3-column layout — [Call Controls | Pre+Post Call | Live Transcript]
     flex.AgentDesktopView.Panel1.Content.add(
-      <SAICPanel key="saic-panel" />,
+      <ThreeColumnLayout key="three-column-layout" />,
       { sortOrder: -1 }
     );
-    console.log('[IsthaAgentAssistPlugin] SAICPanel registered in Panel1');
-
-    // PANEL 2: live transcript — withTaskContext injects task reliably
-    // no if() condition — withTaskContext + internal check handles empty state
-    flex.AgentDesktopView.Panel2.Content.add(
-      <LiveTranscript key="live-transcript" />,
-      { sortOrder: 0 }
-    );
-    console.log('[IsthaAgentAssistPlugin] LiveTranscript registered in Panel2');
-
-    // PANEL 2: agent assist — no if() condition per Twilio support guidance
-    flex.AgentDesktopView.Panel2.Content.add(
-      <AgentAssistPanel key="istha-agent-assist" />,
-      { sortOrder: 1 }
-    );
-    console.log('[IsthaAgentAssistPlugin] AgentAssistPanel registered in Panel2');
+    console.log('[IsthaAgentAssistPlugin] ThreeColumnLayout registered in Panel1');
   }
 }
