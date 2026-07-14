@@ -1,7 +1,7 @@
-﻿import { FlexPlugin } from '@twilio/flex-plugin';
+import { FlexPlugin } from '@twilio/flex-plugin';
 import { Manager } from '@twilio/flex-ui';
 import React from 'react';
-import ThreeColumnLayout from './components/ThreeColumnLayout/ThreeColumnLayout';
+import SAICPanel from './components/SAICPanel/SAICPanel';
 
 const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
 
@@ -13,27 +13,17 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
   async init(flex, manager) {
     console.log('[IsthaAgentAssistPlugin] init called');
 
-    // Hide Panel2 — everything lives in the 3-column layout inside Panel1
-    flex.AgentDesktopView.defaultProps = {
-      ...flex.AgentDesktopView.defaultProps,
-      showPanel2: false,
-    };
-
-    // Token sanity check — logs "string eyJ..." to confirm raw JWT
     const t = Manager.getInstance().user?.token;
     console.log('[AA] token type on load:', typeof t, String(t).slice(0, 15));
 
-    // Suppress the Unified Profiles promo that Flex shows in Panel2 by default.
+    // Panel2 (right side) shows SAICPanel — pre/post call info.
+    // Panel1 (left/centre) is left untouched so the native TaskCanvas
+    // renders at full size with its built-in Mute, Transfer, Hang Up controls.
     flex.CRMContainer.Content.replace(
-      <div key="crm-suppressed" />,
+      <SAICPanel key="saic-panel" />,
       { sortOrder: -Infinity }
     );
 
-    // PANEL 1: 3-column layout — [Call Controls | Pre+Post Call | Live Transcript]
-    flex.AgentDesktopView.Panel1.Content.add(
-      <ThreeColumnLayout key="three-column-layout" />,
-      { sortOrder: -1 }
-    );
-    console.log('[IsthaAgentAssistPlugin] ThreeColumnLayout registered in Panel1');
+    console.log('[IsthaAgentAssistPlugin] SAICPanel registered in Panel2');
   }
 }

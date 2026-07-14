@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useFlexSelector } from '@twilio/flex-ui';
+import CallControlsPanel from '../CallControlsPanel/CallControlsPanel';
 import SAICPanel from '../SAICPanel/SAICPanel';
 import LiveTranscript from '../LiveTranscript/LiveTranscript';
 
@@ -65,14 +66,19 @@ const ThreeColumnLayout = () => {
       userSelect: dragging ? 'none' : 'auto',
     }}>
 
-      {/* Column 1 — Pre-call + Post-call */}
+      {/* Column 1 — Call Controls */}
+      <div style={{ width: 220, flexShrink: 0, overflowY: 'auto', overflowX: 'hidden', borderRight: '1px solid #d9d9d7' }}>
+        <CallControlsPanel />
+      </div>
+
+      {/* Column 2 — Pre-call + Post-call */}
       <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden' }}>
         <SAICPanel task={task} />
       </div>
 
       <DividerHandle onMouseDown={startDrag} dividerStyle={dividerStyle} />
 
-      {/* Column 2 — Live Transcript */}
+      {/* Column 3 — Live Transcript */}
       <div
         ref={col3Ref}
         style={col3Width !== null
