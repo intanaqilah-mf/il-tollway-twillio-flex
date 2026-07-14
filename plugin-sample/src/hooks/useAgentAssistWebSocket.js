@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Manager, Actions } from '@twilio/flex-ui';
 
 const WSS_URL = 'wss://gapi.getipass.com/ivr/relay-server-open/dev/browser-ui/streaming';
@@ -259,6 +259,21 @@ function teardownConnection(taskSid) {
   }
 }
 
+function sendMessageToRelay(taskSid, payload) {
+  const entry = registry.get(taskSid);
+  if (!entry?.ws || entry.ws.readyState !== WebSocket.OPEN) {
+    console.error('[AA] sendMessage: WebSocket not open for task', taskSid);
+    return false;
+  }
+  try {
+    entry.ws.send(JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    console.error('[AA] sendMessage failed:', e);
+    return false;
+  }
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useAgentAssistWebSocket(task) {
   // Use stable primitive SID — NOT the task object — as the dependency key.
@@ -345,5 +360,12 @@ export function useAgentAssistWebSocket(task) {
     };
   }, [taskSid]);
 
-  return state;
+  // Stable across renders — only changes when taskSid changes — so wrapup
+  // effects can include it as a dep without spurious re-fires.
+  const sendMessage = useCallback(
+    (payload) => (taskSid ? sendMessageToRelay(taskSid, payload) : false),
+    [taskSid],
+  );
+
+  return { ...state, sendMessage };
 }

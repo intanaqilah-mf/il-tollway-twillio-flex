@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Manager } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
@@ -449,7 +449,7 @@ const SAICPanel = ({ task: taskProp }) => {
     } catch { return undefined; }
   }, [taskProp]);
 
-  const { preCall: wsPreCall, sentiment, postCall } = useAgentAssistWebSocket(task);
+  const { preCall: wsPreCall, sentiment, postCall, sendMessage } = useAgentAssistWebSocket(task);
 
   // Cache last known preCall so fields stay visible after the task is removed (post-call)
   const [cachedPreCall, setCachedPreCall] = useState(null);
@@ -464,14 +464,17 @@ const SAICPanel = ({ task: taskProp }) => {
   const [summary, setSummary] = useState('');
   const [summaryEdited, setSummaryEdited] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [originalAiSummary, setOriginalAiSummary] = useState('');
+  const hasSubmittedRef = useRef(false);
 
   const taskSid = task?.taskSid || task?.sid || null;
 
-  // Populate summary from postCall when it arrives, unless user already edited it
+  // Populate summary from postCall when it arrives, unless user already edited it.
+  // Also capture the original AI text once — never overwritten after first arrival.
   useEffect(() => {
-    if (postCall?.summary && !summaryEdited) {
-      setSummary(postCall.summary);
-    }
+    if (!postCall?.summary) return;
+    if (!summaryEdited) setSummary(postCall.summary);
+    setOriginalAiSummary((prev) => prev || postCall.summary);
   }, [postCall?.summary, summaryEdited]);
 
   // Reset on new task
@@ -480,12 +483,23 @@ const SAICPanel = ({ task: taskProp }) => {
     setSummaryEdited(false);
     setEditing(false);
     setSubmitted(false);
+    setOriginalAiSummary('');
+    hasSubmittedRef.current = false;
     setCachedPreCall(null);
   }, [taskSid]);
 
   // Direct task-attribute fallbacks so pre-call section populates even when
   // the WebSocket hasn't delivered a pre_call_summary message yet.
   const attrs = task?.attributes || {};
+
+  const callSid =
+    attrs.callSid || attrs.call_sid || attrs.CallSid || null;
+
+  const agentEmail = (() => {
+    try { return Manager.getInstance().user?.email || null; } catch { return null; }
+  })();
+
+  const sentimentScore = sentiment?.sentimentScore ?? null;
 
   const callerId =
     preCall?.callersPhoneNumber ||
@@ -534,6 +548,39 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const postCallDuration = formatDuration(postCall?.callDurationSeconds);
 
+  // Shared payload builder — used by both handleSubmit and the wrapup fallback.
+  // Closes over current render's state so callers always get fresh values.
+  function buildSummaryPayload() {
+    const effectiveSummary = editing
+      ? (SUMMARY_KEYS.filter((k) => editFields[k]).map((k) => `${k}\n${editFields[k]}`).join('\n') || summary)
+      : summary;
+    return {
+      callSid,
+      taskSid,
+      agentEmail,
+      submittedAt: new Date().toISOString(),
+      callersPhoneNumber: callerId,
+      authenticationStatus: isVerified ? 'AUTHENTICATED' : 'UNAUTHENTICATED',
+      lastOpenIntent: intentVal,
+      IVRPathSummary: ivrPath,
+      statedReason,
+      preCallSentiment,
+      accountNumber,
+      sentimentLabel,
+      sentimentScore,
+      callDurationSeconds: postCall?.callDurationSeconds ?? null,
+      overallSentiment: postCall?.overallSentiment || sentimentLabel,
+      aiSummary: originalAiSummary,
+      agentEditedSummary: effectiveSummary,
+      summaryEdited,
+    };
+  }
+
+  // Ref to the latest buildSummaryPayload so effects always see fresh state
+  // without listing every closure variable as a dep.
+  const buildPayloadRef = useRef(buildSummaryPayload);
+  buildPayloadRef.current = buildSummaryPayload;
+
   const handleEnterEdit = () => {
     const parsed = parseSummaryFields(summary) || {};
     setEditFields({
@@ -572,9 +619,32 @@ const SAICPanel = ({ task: taskProp }) => {
       setEditFields({});
     }
     setEditing(false);
+
+    const payload = buildPayloadRef.current();
+    if (!payload.callSid || !payload.taskSid) {
+      console.error('[AA submit] missing callSid or taskSid — not sending');
+    } else {
+      const sent = sendMessage(payload);
+      if (sent) hasSubmittedRef.current = true;
+    }
+
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
   };
+
+  // Wrapup fallback: fires when agent clicks Complete (task status → 'wrapping').
+  // Sends the payload only if the agent never manually submitted.
+  useEffect(() => {
+    if (task?.status !== 'wrapping') return;
+    if (hasSubmittedRef.current) return;
+    const payload = buildPayloadRef.current();
+    if (!payload.callSid || !payload.taskSid) {
+      console.error('[AA wrapup] missing callSid or taskSid — skipping fallback send');
+      return;
+    }
+    const sent = sendMessage(payload);
+    if (sent) hasSubmittedRef.current = true;
+  }, [task?.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Placeholder = ({ text }) => (
     <span style={s.fieldPlaceholder}>{text || '—'}</span>

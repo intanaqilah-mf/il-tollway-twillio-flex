@@ -1,4 +1,4 @@
-import { FlexPlugin } from '@twilio/flex-plugin';
+﻿import { FlexPlugin } from '@twilio/flex-plugin';
 import { Manager } from '@twilio/flex-ui';
 import React from 'react';
 import ThreeColumnLayout from './components/ThreeColumnLayout/ThreeColumnLayout';
@@ -28,18 +28,6 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       <div key="crm-suppressed" />,
       { sortOrder: -Infinity }
     );
-
-    // Suppress the native CallCanvas (the bottom call control bar) —
-    // we render our own call controls in the left column.
-    try {
-      flex.CallCanvas.defaultProps = { ...flex.CallCanvas.defaultProps, hidden: true };
-    } catch {}
-    try {
-      flex.AgentDesktopView.Panel2.Content.replace(
-        <div key="panel2-empty" style={{ display: 'none' }} />,
-        { sortOrder: -Infinity }
-      );
-    } catch {}
 
     // PANEL 1: 3-column layout — [Call Controls | Pre+Post Call | Live Transcript]
     flex.AgentDesktopView.Panel1.Content.add(

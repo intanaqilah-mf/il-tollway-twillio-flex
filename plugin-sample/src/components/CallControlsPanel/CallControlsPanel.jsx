@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Manager, Actions } from '@twilio/flex-ui';
+import React from 'react';
+import { Actions, useFlexSelector } from '@twilio/flex-ui';
 
-function getFlexTask() {
-  try {
-    const flex = Manager.getInstance().store.getState()?.flex;
-    const sid = flex?.view?.selectedTaskSid;
-    const tasks = flex?.worker?.tasks;
-    if (sid && tasks?.get) return tasks.get(sid) || null;
-    if (tasks?.size > 0) return tasks.values().next().value || null;
-  } catch {}
-  return null;
+// customer's callSid lives at task.conference.participants.customer.callSid
+// falls back to task.attributes for the ~1s window after accept before conference populates
+function getCustomerParticipantSid(task) {
+  return (
+    task?.conference?.participants?.customer?.callSid ||
+    task?.attributes?.conference?.participants?.customer ||
+    null
+  );
 }
 
 const colors = {
@@ -19,7 +18,6 @@ const colors = {
   textPrimary: '#32363a',
 };
 
-// ── Inline SVG icons ──────────────────────────────────────────────────
 const MicIcon = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -52,7 +50,6 @@ const PlayIcon = ({ size = 18 }) => (
   </svg>
 );
 
-
 const TransferIcon = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="17 1 21 5 17 9"/>
@@ -62,8 +59,7 @@ const TransferIcon = ({ size = 18 }) => (
   </svg>
 );
 
-// ─────────────────────────────────────────────────────────────────────
-const CtrlBtn = ({ onClick, disabled, active, danger, icon, label }) => (
+const CtrlBtn = ({ onClick, disabled, active, icon, label }) => (
   <button
     onClick={onClick}
     disabled={disabled}
@@ -74,12 +70,10 @@ const CtrlBtn = ({ onClick, disabled, active, danger, icon, label }) => (
       justifyContent: 'center',
       gap: '8px',
       padding: '10px 12px',
-      border: danger ? 'none' : `1px solid ${active ? colors.navy : colors.border}`,
+      border: `1px solid ${active ? colors.navy : colors.border}`,
       borderRadius: '4px',
-      background: danger
-        ? (disabled ? '#e0e0e0' : colors.red)
-        : (active ? colors.navy : colors.white),
-      color: danger ? colors.white : (active ? colors.white : colors.textPrimary),
+      background: active ? colors.navy : colors.white,
+      color: active ? colors.white : colors.textPrimary,
       fontWeight: '600',
       cursor: disabled ? 'not-allowed' : 'pointer',
       opacity: disabled ? 0.45 : 1,
@@ -94,44 +88,53 @@ const CtrlBtn = ({ onClick, disabled, active, danger, icon, label }) => (
 );
 
 const CallControlsPanel = () => {
-  const [task, setTask] = useState(() => getFlexTask());
-  const [isMuted, setIsMuted] = useState(false);
-  const [isOnHold, setIsOnHold] = useState(false);
+  // Read everything from Redux — never mirror hold/mute in local state.
+  // Local state desyncs when keyboard shortcuts or other plugins toggle these.
+  const task = useFlexSelector((state) => {
+    const tasks = state.flex.worker.tasks;
+    for (const t of tasks.values()) {
+      if (t.taskChannelUniqueName === 'voice' && t.status === 'accepted') return t;
+    }
+    return null;
+  });
 
-  useEffect(() => {
-    try {
-      return Manager.getInstance().store.subscribe(() => {
-        const t = getFlexTask();
-        setTask(t);
-        if (!t) { setIsMuted(false); setIsOnHold(false); }
-      });
-    } catch { return undefined; }
-  }, []);
+  const isMuted = useFlexSelector((state) => state.flex.phone?.isMuted ?? false);
+  // hold state lives on the conference participant, not on the task itself
+  const isOnHold = task?.conference?.participants?.customer?.onHold ?? false;
+
+  const hasCall = !!task;
 
   const handleMute = () => {
-    try { Actions.invokeAction('ToggleMute'); } catch {}
-    setIsMuted((v) => !v);
+    try { Actions.invokeAction('ToggleMute'); } catch (e) {
+      console.error('[CallControls] ToggleMute failed:', e);
+    }
   };
 
   const handleHold = () => {
     if (!task) return;
-    const sid = task.taskSid || task.sid;
+    const targetSid = getCustomerParticipantSid(task);
+    if (!targetSid) {
+      // conference participants not ready yet (~1s after accept) — bail silently
+      console.warn('[CallControls] Hold skipped: customer participant SID not ready');
+      return;
+    }
     try {
-      Actions.invokeAction(isOnHold ? 'UnholdCall' : 'HoldCall', { sid });
-    } catch {}
-    setIsOnHold((v) => !v);
+      Actions.invokeAction(isOnHold ? 'UnholdParticipant' : 'HoldParticipant', {
+        participantType: 'customer',
+        task,
+        targetSid,
+      });
+    } catch (e) {
+      console.error('[CallControls] Hold action failed:', e);
+    }
   };
 
   const handleTransfer = () => {
     if (!task) return;
-    // Try Flex's built-in transfer actions in order of preference
-    const attempts = ['ShowDirectory', 'TransferTask', 'StartWarmTransfer'];
-    for (const action of attempts) {
-      try { Actions.invokeAction(action, { task }); return; } catch {}
+    try { Actions.invokeAction('ShowDirectory', { task }); } catch (e) {
+      console.error('[CallControls] ShowDirectory failed:', e);
     }
   };
-
-  const hasCall = !!task;
 
   return (
     <div style={{
@@ -143,7 +146,6 @@ const CallControlsPanel = () => {
       background: colors.white,
       overflow: 'hidden',
     }}>
-      {/* Header */}
       <div style={{
         background: colors.navy,
         color: colors.white,
@@ -158,8 +160,6 @@ const CallControlsPanel = () => {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-        {/* Mute */}
         <CtrlBtn
           onClick={handleMute}
           disabled={!hasCall}
@@ -167,8 +167,6 @@ const CallControlsPanel = () => {
           icon={isMuted ? <MicOffIcon /> : <MicIcon />}
           label={isMuted ? 'Unmute' : 'Mute'}
         />
-
-        {/* Hold */}
         <CtrlBtn
           onClick={handleHold}
           disabled={!hasCall}
@@ -176,8 +174,6 @@ const CallControlsPanel = () => {
           icon={isOnHold ? <PlayIcon /> : <PauseIcon />}
           label={isOnHold ? 'Resume' : 'Hold'}
         />
-
-        {/* Transfer */}
         <CtrlBtn
           onClick={handleTransfer}
           disabled={!hasCall}
@@ -185,9 +181,7 @@ const CallControlsPanel = () => {
           icon={<TransferIcon />}
           label="Transfer"
         />
-
       </div>
-
     </div>
   );
 };
