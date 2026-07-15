@@ -45,15 +45,20 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
         min-width: 0 !important;
         overflow: hidden !important;
       }
+      .Twilio-CRMContainer {
+        display: none !important;
+      }
     `;
     document.head.appendChild(style);
 
-    // Panel2 (right side) shows SAICPanel + LiveTranscript side by side.
-    // Panel1 (left/centre) is untouched — native TaskCanvas renders at full size
-    // with its built-in Mute, Transfer, Hang Up controls.
-    flex.CRMContainer.Content.replace(
+    // Force Panel2 to always render — in deployed Flex, Panel2 only exists in the DOM
+    // when there is an active task, so Panel2.Content.add() never mounts without this.
+    // Localhost always renders Panel2 (dev mode default), which is why it works there.
+    flex.AgentDesktopView.defaultProps.showPanel2 = true;
+
+    flex.AgentDesktopView.Panel2.Content.add(
       <RightPanel key="right-panel" />,
-      { sortOrder: -Infinity }
+      { sortOrder: -1 }
     );
 
     console.log('[IsthaAgentAssistPlugin] RightPanel registered in Panel2');
