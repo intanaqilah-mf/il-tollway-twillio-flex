@@ -650,28 +650,29 @@ const SAICPanel = ({ task: taskProp }) => {
   };
 
   const handleSave = () => {
+    if (hasSubmittedRef.current) return;
     const rebuilt = SUMMARY_KEYS
       .filter((k) => editFields[k])
       .map((k) => `${k}\n${editFields[k]}`)
       .join('\n');
+    // Build payload NOW while editing=true and editFields still hold the latest edits.
+    // setState calls below are async so buildPayloadRef still sees the current closure values.
+    const payload = buildPayloadRef.current();
     setSummary(rebuilt || summary);
     setSummaryEdited(true);
     setEditFields({});
     setEditing(false);
+    setSubmitted(true);
+    if (!payload.callSid || !payload.taskSid) {
+      console.error('[AA save] missing callSid or taskSid — not sending');
+    } else {
+      const sent = sendMessage(payload);
+      if (sent) hasSubmittedRef.current = true;
+    }
   };
 
   const handleSubmit = () => {
-    if (editing) {
-      const rebuilt = SUMMARY_KEYS
-        .filter((k) => editFields[k])
-        .map((k) => `${k}\n${editFields[k]}`)
-        .join('\n');
-      setSummary(rebuilt || summary);
-      setSummaryEdited(true);
-      setEditFields({});
-    }
-    setEditing(false);
-
+    if (hasSubmittedRef.current) return;
     const payload = buildPayloadRef.current();
     if (!payload.callSid || !payload.taskSid) {
       console.error('[AA submit] missing callSid or taskSid — not sending');
@@ -680,9 +681,7 @@ const SAICPanel = ({ task: taskProp }) => {
       if (sent) hasSubmittedRef.current = true;
       //sendToSAP(payload);
     }
-
     setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
   };
 
   // Wrapup fallback: fires when agent clicks Complete (task status → 'wrapping').
@@ -696,7 +695,10 @@ const SAICPanel = ({ task: taskProp }) => {
       return;
     }
     const sent = sendMessage(payload);
-    if (sent) hasSubmittedRef.current = true;
+    if (sent) {
+      hasSubmittedRef.current = true;
+      setSubmitted(true);
+    }
     //sendToSAP(payload);
   }, [task?.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -852,27 +854,28 @@ const SAICPanel = ({ task: taskProp }) => {
 
       {/* Action buttons */}
       <div style={s.btnRow}>
-        <button
-          style={s.btnEdit}
-          onClick={editing ? handleCancelEdit : handleEnterEdit}
-        >
-          {editing ? 'Cancel' : 'Edit'}
-        </button>
-        {editing ? (
-          <button style={s.btnSubmit} onClick={handleSave}>
-            Save
-          </button>
+        {submitted && !editing ? (
+          <span style={{ color: colors.authGreen, fontWeight: '700', fontSize: '13px' }}>
+            Submitted!
+          </span>
         ) : (
-          <button
-            style={{
-              ...s.btnSubmit,
-              background: submitted ? '#107e3e' : colors.sapBlue,
-            }}
-            onClick={handleSubmit}
-            disabled={submitted}
-          >
-            {submitted ? 'Submitted!' : 'Submit to SAP'}
-          </button>
+          <>
+            <button
+              style={s.btnEdit}
+              onClick={editing ? handleCancelEdit : handleEnterEdit}
+            >
+              {editing ? 'Cancel' : 'Edit'}
+            </button>
+            {editing ? (
+              <button style={s.btnSubmit} onClick={handleSave}>
+                Save
+              </button>
+            ) : (
+              <button style={s.btnSubmit} onClick={handleSubmit}>
+                Submit to SAP
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
