@@ -364,7 +364,15 @@ function parseSummaryFields(text) {
   // If the AI consolidated all field values into the customer_satisfaction blob, re-parse
   // that blob and distribute the extracted values back into their individual fields.
   const embedded = parseEmbeddedProse(result.customer_satisfaction);
-  if (embedded) Object.assign(result, embedded);
+  if (embedded) {
+    // Strip embedded section labels from customer_satisfaction so only the
+    // actual satisfaction text is shown - Situation/Action/Resolution have their own fields.
+    const firstLabel = result.customer_satisfaction?.search(/\b(situation|action|resolution)\b/i) ?? -1;
+    if (firstLabel !== -1) {
+      result.customer_satisfaction = result.customer_satisfaction.slice(0, firstLabel).trim().replace(/[.,\s]+$/, "");
+    }
+    Object.assign(result, embedded);
+  }
   return result;
 }
 
