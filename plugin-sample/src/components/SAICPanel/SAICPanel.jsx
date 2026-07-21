@@ -590,6 +590,7 @@ const SAICPanel = ({ task: taskProp }) => {
       ? (SUMMARY_KEYS.filter((k) => editFields[k]).map((k) => `${k}\n${editFields[k]}`).join('\n') || summary)
       : summary;
     return {
+      type: 'agent_summary_submit',
       callSid,
       taskSid,
       agentEmail,
@@ -668,9 +669,11 @@ const SAICPanel = ({ task: taskProp }) => {
 
   // Wrapup fallback: fires when agent clicks Complete (task status → 'wrapping').
   // Sends the payload only if the agent never manually submitted.
+  // Depends on originalAiSummary so it re-runs once post_call_summary arrives via WS.
   useEffect(() => {
     if (task?.status !== 'wrapping') return;
     if (hasSubmittedRef.current) return;
+    if (!originalAiSummary) return;
     const payload = buildPayloadRef.current();
     if (!payload.callSid || !payload.taskSid) {
       console.error('[AA wrapup] missing callSid or taskSid — skipping fallback send');
@@ -678,7 +681,7 @@ const SAICPanel = ({ task: taskProp }) => {
     }
     const sent = sendMessage(payload);
     if (sent) hasSubmittedRef.current = true;
-  }, [task?.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [task?.status, sendMessage, originalAiSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Placeholder = ({ text }) => (
     <span style={s.fieldPlaceholder}>{text || '—'}</span>
@@ -849,8 +852,15 @@ const SAICPanel = ({ task: taskProp }) => {
                 Save
               </button>
             ) : (
-              <button style={s.btnSubmit} onClick={handleSubmit}>
-                Submit to SAP
+              <button
+                style={{
+                  ...s.btnSubmit,
+                  background: submitted ? '#107e3e' : (!originalAiSummary ? '#aaa' : colors.sapBlue),
+                }}
+                onClick={handleSubmit}
+                disabled={submitted || !originalAiSummary}
+              >
+                {submitted ? 'Submitted!' : (!originalAiSummary ? 'Loading summary...' : 'Submit to SAP')}
               </button>
             )}
           </>
