@@ -875,7 +875,7 @@ const SAICPanel = ({ task: taskProp }) => {
                 onClick={handleSubmit}
                 disabled={submitted || !originalAiSummary}
               >
-                {submitted ? 'Submitted!' : (!originalAiSummary ? 'Loading summary...' : 'Submit to SAP')}
+                {submitted ? 'Submitted!' : (!originalAiSummary ? 'Submit to SAP' : 'Submit to SAP')}
               </button>
             )}
           </>
