@@ -15,24 +15,6 @@ function getFlexTask() {
   return null;
 }
 
-// TODO: confirm this path with Charmi — must match the backend route for call-summary SAP storage
-/*const SAP_API_URL = 'https://gapi.getipass.com/ai/agent-assist/sap/call-summary';
-
-async function sendToSAP(payload) {
-  try {
-    const res = await fetch(SAP_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      console.error('[SAP] API call failed:', res.status, await res.text());
-    }
-  } catch (err) {
-    console.error('[SAP] API call error:', err);
-  }
-}*/
-
 const colors = {
   navyHeader: '#1a3352',
   sapBlue: '#0070b9',
@@ -608,7 +590,6 @@ const SAICPanel = ({ task: taskProp }) => {
       ? (SUMMARY_KEYS.filter((k) => editFields[k]).map((k) => `${k}\n${editFields[k]}`).join('\n') || summary)
       : summary;
     return {
-      type: 'agent_summary_submit',
       callSid,
       taskSid,
       agentEmail,
@@ -620,6 +601,8 @@ const SAICPanel = ({ task: taskProp }) => {
       statedReason,
       preCallSentiment,
       accountNumber,
+      sentimentLabel,
+      sentimentScore,
       callDurationSeconds: postCall?.callDurationSeconds ?? null,
       overallSentiment: postCall?.overallSentiment || sentimentLabel,
       aiSummary: originalAiSummary,
@@ -679,7 +662,6 @@ const SAICPanel = ({ task: taskProp }) => {
     } else {
       const sent = sendMessage(payload);
       if (sent) hasSubmittedRef.current = true;
-      //sendToSAP(payload);
     }
     setSubmitted(true);
   };
@@ -695,11 +677,7 @@ const SAICPanel = ({ task: taskProp }) => {
       return;
     }
     const sent = sendMessage(payload);
-    if (sent) {
-      hasSubmittedRef.current = true;
-      setSubmitted(true);
-    }
-    //sendToSAP(payload);
+    if (sent) hasSubmittedRef.current = true;
   }, [task?.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Placeholder = ({ text }) => (
