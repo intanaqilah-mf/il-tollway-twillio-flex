@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Manager } from '@twilio/flex-ui';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import { Manager, Actions } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
 // Flex Panel1.Content and CRMContainer.Content do not always inject the `task`
@@ -667,21 +667,27 @@ const SAICPanel = ({ task: taskProp }) => {
     setSubmitted(true);
   };
 
-  // Wrapup fallback: fires when agent clicks Complete (task status → 'wrapping').
-  // Sends the payload only if the agent never manually submitted.
-  // Depends on originalAiSummary so it re-runs once post_call_summary arrives via WS.
+  // Fallback: auto-submit only when the agent clicks Complete in Twilio Flex,
+  // giving the user full wrap-up time to edit and save first.
   useEffect(() => {
-    if (task?.status !== 'wrapping') return;
-    if (hasSubmittedRef.current) return;
-    if (!originalAiSummary) return;
-    const payload = buildPayloadRef.current();
-    if (!payload.callSid || !payload.taskSid) {
-      console.error('[AA wrapup] missing callSid or taskSid — skipping fallback send');
-      return;
-    }
-    const sent = sendMessage(payload);
-    if (sent) hasSubmittedRef.current = true;
-  }, [task?.status, sendMessage, originalAiSummary]); // eslint-disable-line react-hooks/exhaustive-deps
+    const handler = (payload) => {
+      const tid = payload?.task?.taskSid || payload?.task?.sid;
+      if (tid !== taskSid) return;
+      if (hasSubmittedRef.current) return;
+      const submitPayload = buildPayloadRef.current();
+      if (!submitPayload.callSid || !submitPayload.taskSid) {
+        console.error('[AA complete] missing callSid or taskSid — skipping fallback send');
+        return;
+      }
+      const sent = sendMessage(submitPayload);
+      if (sent) {
+        hasSubmittedRef.current = true;
+        setSubmitted(true);
+      }
+    };
+    Actions.addListener('beforeCompleteTask', handler);
+    return () => Actions.removeListener('beforeCompleteTask', handler);
+  }, [taskSid, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Placeholder = ({ text }) => (
     <span style={s.fieldPlaceholder}>{text || '—'}</span>
@@ -856,6 +862,7 @@ const SAICPanel = ({ task: taskProp }) => {
                 style={{
                   ...s.btnSubmit,
                   background: submitted ? '#107e3e' : (!originalAiSummary ? '#aaa' : colors.sapBlue),
+                  cursor: (submitted || !originalAiSummary) ? 'not-allowed' : 'pointer',
                 }}
                 onClick={handleSubmit}
                 disabled={submitted || !originalAiSummary}
