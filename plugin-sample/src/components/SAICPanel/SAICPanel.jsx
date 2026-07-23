@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Manager, Actions } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
@@ -189,21 +189,6 @@ const s = {
     minHeight: '90px',
     fontSize: '13px',
   },
-  summaryTextarea: {
-    width: '100%',
-    boxSizing: 'border-box',
-    color: colors.textPrimary,
-    lineHeight: '1.6',
-    background: colors.white,
-    border: `2px solid ${colors.sapBlue}`,
-    borderRadius: '4px',
-    padding: '10px 12px',
-    minHeight: '90px',
-    fontSize: '13px',
-    fontFamily: 'inherit',
-    resize: 'vertical',
-    outline: 'none',
-  },
 
   // ── Structured summary ────────────────────────────────────────────
   summaryField: {
@@ -223,40 +208,15 @@ const s = {
     fontSize: '13px',
   },
 
-  // ── Buttons ───────────────────────────────────────────────────────
-  btnRow: {
-    display: 'flex',
-    gap: '10px',
-    padding: '12px 16px',
+  // ── Status row ────────────────────────────────────────────────────
+  statusRow: {
+    padding: '10px 16px',
     borderTop: `1px solid ${colors.borderColor}`,
     background: colors.sectionBg,
     flexShrink: 0,
-  },
-  btnEdit: {
-    flex: 1,
-    padding: '8px 0',
-    background: colors.white,
-    color: colors.navyHeader,
-    border: `1px solid ${colors.navyHeader}`,
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '600',
-    fontFamily: 'inherit',
-    transition: 'background 0.15s',
-  },
-  btnSubmit: {
-    flex: 2,
-    padding: '8px 0',
-    background: colors.sapBlue,
-    color: colors.white,
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '600',
-    fontFamily: 'inherit',
-    transition: 'background 0.15s',
+    minHeight: '42px',
+    display: 'flex',
+    alignItems: 'center',
   },
 
   // ── Two-column field rows ─────────────────────────────────────────
@@ -376,39 +336,6 @@ function parseSummaryFields(text) {
   return result;
 }
 
-function AutoTextarea({ value, onChange }) {
-  const ref = React.useRef(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    ref.current.style.height = 'auto';
-    ref.current.style.height = ref.current.scrollHeight + 'px';
-  }, [value]);
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={onChange}
-      rows={1}
-      style={{
-        width: '100%',
-        boxSizing: 'border-box',
-        color: colors.textPrimary,
-        lineHeight: '1.6',
-        background: colors.white,
-        border: `1px solid ${colors.sapBlue}`,
-        borderRadius: '3px',
-        padding: '4px 6px',
-        fontSize: '13px',
-        fontFamily: 'inherit',
-        outline: 'none',
-        overflow: 'hidden',
-        resize: 'none',
-        minHeight: '24px',
-      }}
-    />
-  );
-}
-
 function CopyableValue({ value, placeholder }) {
   const [copied, setCopied] = useState(false);
 
@@ -502,32 +429,28 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const preCall = wsPreCall || cachedPreCall;
 
-  const [editing, setEditing] = useState(false);
-  const [editFields, setEditFields] = useState({});
   const [summary, setSummary] = useState('');
-  const [summaryEdited, setSummaryEdited] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [originalAiSummary, setOriginalAiSummary] = useState('');
   const hasSubmittedRef = useRef(false);
+  const callEndedRef = useRef(false);
 
   const taskSid = task?.taskSid || task?.sid || null;
 
-  // Populate summary from postCall when it arrives, unless user already edited it.
-  // Also capture the original AI text once — never overwritten after first arrival.
+  // Populate summary from postCall when it arrives
   useEffect(() => {
     if (!postCall?.summary) return;
-    if (!summaryEdited) setSummary(postCall.summary);
+    setSummary(postCall.summary);
     setOriginalAiSummary((prev) => prev || postCall.summary);
-  }, [postCall?.summary, summaryEdited]);
+  }, [postCall?.summary]);
 
   // Reset on new task
   useEffect(() => {
     setSummary('');
-    setSummaryEdited(false);
-    setEditing(false);
     setSubmitted(false);
     setOriginalAiSummary('');
     hasSubmittedRef.current = false;
+    callEndedRef.current = false;
     setCachedPreCall(null);
   }, [taskSid]);
 
@@ -591,12 +514,8 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const postCallDuration = formatDuration(postCall?.callDurationSeconds);
 
-  // Shared payload builder — used by both handleSubmit and the wrapup fallback.
-  // Closes over current render's state so callers always get fresh values.
+  // Payload builder — closes over current render state via buildPayloadRef
   function buildSummaryPayload() {
-    const effectiveSummary = editing
-      ? (SUMMARY_KEYS.filter((k) => editFields[k]).map((k) => `${k}\n${editFields[k]}`).join('\n') || summary)
-      : summary;
     return {
       type: 'agent_summary_submit',
       callSid,
@@ -615,68 +534,28 @@ const SAICPanel = ({ task: taskProp }) => {
       callDurationSeconds: postCall?.callDurationSeconds ?? null,
       overallSentiment: postCall?.overallSentiment || sentimentLabel,
       aiSummary: originalAiSummary,
-      agentEditedSummary: effectiveSummary,
-      summaryEdited,
     };
   }
 
   // Ref to the latest buildSummaryPayload so effects always see fresh state
-  // without listing every closure variable as a dep.
   const buildPayloadRef = useRef(buildSummaryPayload);
   buildPayloadRef.current = buildSummaryPayload;
 
-  const handleEnterEdit = () => {
-    const parsed = parseSummaryFields(summary) || {};
-    setEditFields({
-      situation: parsed.situation || '',
-      action: parsed.action || '',
-      resolution: parsed.resolution || '',
-      customer_satisfaction: parsed.customer_satisfaction || '',
-    });
-    setEditing(true);
-  };
-
-  const handleCancelEdit = () => {
-    setEditing(false);
-    setEditFields({});
-  };
-
-  const handleSave = () => {
-    if (hasSubmittedRef.current) return;
-    const rebuilt = SUMMARY_KEYS
-      .filter((k) => editFields[k])
-      .map((k) => `${k}\n${editFields[k]}`)
-      .join('\n');
-    // Build payload NOW while editing=true and editFields still hold the latest edits.
-    // setState calls below are async so buildPayloadRef still sees the current closure values.
-    const payload = buildPayloadRef.current();
-    setSummary(rebuilt || summary);
-    setSummaryEdited(true);
-    setEditFields({});
-    setEditing(false);
-    setSubmitted(true);
-    if (!payload.callSid || !payload.taskSid) {
-      console.error('[AA save] missing callSid or taskSid — not sending');
-    } else {
-      const sent = sendMessage(payload);
-      if (sent) hasSubmittedRef.current = true;
-    }
-  };
-
-  const handleSubmit = () => {
-    if (hasSubmittedRef.current) return;
+  // Primary auto-submit: triggers when the task enters wrapping (call ended by either party)
+  // OR when the summary arrives after the call has already ended.
+  useEffect(() => {
+    if (task?.status === 'wrapping') callEndedRef.current = true;
+    if (!callEndedRef.current || !originalAiSummary || hasSubmittedRef.current) return;
     const payload = buildPayloadRef.current();
     if (!payload.callSid || !payload.taskSid) {
-      console.error('[AA submit] missing callSid or taskSid — not sending');
-    } else {
-      const sent = sendMessage(payload);
-      if (sent) hasSubmittedRef.current = true;
+      console.error('[AA wrapup] missing callSid or taskSid — not submitting');
+      return;
     }
-    setSubmitted(true);
-  };
+    const sent = sendMessage(payload);
+    if (sent) { hasSubmittedRef.current = true; setSubmitted(true); }
+  }, [task?.status, originalAiSummary, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fallback: auto-submit only when the agent clicks Complete in Twilio Flex,
-  // giving the user full wrap-up time to edit and save first.
+  // Fallback: submit if the agent somehow manually completes the task before auto-submit fires
   useEffect(() => {
     const handler = (payload) => {
       const tid = payload?.task?.taskSid || payload?.task?.sid;
@@ -688,10 +567,7 @@ const SAICPanel = ({ task: taskProp }) => {
         return;
       }
       const sent = sendMessage(submitPayload);
-      if (sent) {
-        hasSubmittedRef.current = true;
-        setSubmitted(true);
-      }
+      if (sent) { hasSubmittedRef.current = true; setSubmitted(true); }
     };
     Actions.addListener('beforeCompleteTask', handler);
     return () => Actions.removeListener('beforeCompleteTask', handler);
@@ -806,22 +682,10 @@ const SAICPanel = ({ task: taskProp }) => {
         </div>
       </div>
 
-      {/* AI Summary */}
+      {/* AI Summary — read-only */}
       <div style={s.summaryBox}>
         <div style={s.summaryLabel}>Generative AI Session Summarization</div>
-        {editing ? (
-          <div style={{ ...s.summaryText, padding: '10px 12px', background: colors.white, border: `2px solid ${colors.sapBlue}` }}>
-            {SUMMARY_DISPLAY_KEYS.map((k, idx) => (
-              <div key={k} style={{ ...s.summaryField, marginBottom: '10px' }}>
-                <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
-                <AutoTextarea
-                  value={editFields[k] || ''}
-                  onChange={(e) => { setEditFields((prev) => ({ ...prev, [k]: e.target.value })); setSummaryEdited(true); }}
-                />
-              </div>
-            ))}
-          </div>
-        ) : (() => {
+        {(() => {
           const parsed = parseSummaryFields(summary);
           if (parsed) {
             return (
@@ -845,38 +709,16 @@ const SAICPanel = ({ task: taskProp }) => {
         })()}
       </div>
 
-      {/* Action buttons */}
-      <div style={s.btnRow}>
-        {submitted && !editing ? (
+      {/* Submission status */}
+      <div style={s.statusRow}>
+        {submitted ? (
           <span style={{ color: colors.authGreen, fontWeight: '700', fontSize: '13px' }}>
-            Submitted!
+            Submitted to SAP
           </span>
         ) : (
-          <>
-            <button
-              style={s.btnEdit}
-              onClick={editing ? handleCancelEdit : handleEnterEdit}
-            >
-              {editing ? 'Cancel' : 'Edit'}
-            </button>
-            {editing ? (
-              <button style={s.btnSubmit} onClick={handleSave}>
-                Save
-              </button>
-            ) : (
-              <button
-                style={{
-                  ...s.btnSubmit,
-                  background: submitted ? '#107e3e' : (!originalAiSummary ? '#aaa' : colors.sapBlue),
-                  cursor: (submitted || !originalAiSummary) ? 'not-allowed' : 'pointer',
-                }}
-                onClick={handleSubmit}
-                disabled={submitted || !originalAiSummary}
-              >
-                {submitted ? 'Submitted!' : (!originalAiSummary ? 'Submit to SAP' : 'Submit to SAP')}
-              </button>
-            )}
-          </>
+          <span style={{ color: colors.textSecondary, fontSize: '12px', fontStyle: 'italic' }}>
+            {originalAiSummary ? 'Awaiting call end...' : 'Awaiting session summary...'}
+          </span>
         )}
       </div>
     </div>

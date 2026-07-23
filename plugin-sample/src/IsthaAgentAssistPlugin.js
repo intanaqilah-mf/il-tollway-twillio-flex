@@ -1,5 +1,5 @@
 import { FlexPlugin } from '@twilio/flex-plugin';
-import { Manager } from '@twilio/flex-ui';
+import { Manager, Actions } from '@twilio/flex-ui';
 import React from 'react';
 import SAICPanel from './components/SAICPanel/SAICPanel';
 import LiveTranscript from './components/LiveTranscript/LiveTranscript';
@@ -62,5 +62,11 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     );
 
     console.log('[IsthaAgentAssistPlugin] RightPanel registered in Panel2');
+
+    // Block manual task completion — the system auto-completes tasks after the call ends.
+    // This prevents agents from clicking "Complete" early and stealing wrap-up time.
+    Actions.replaceAction('CompleteTask', async () => {
+      console.log('[IsthaAgentAssistPlugin] Manual CompleteTask blocked — system handles task completion');
+    });
   }
 }
