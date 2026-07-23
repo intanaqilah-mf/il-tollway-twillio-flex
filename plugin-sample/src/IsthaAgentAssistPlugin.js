@@ -48,6 +48,13 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       .Twilio-CRMContainer {
         display: none !important;
       }
+      /* Hide the wrap-up Complete button */
+      .Twilio-TaskListButtons-WrapUp,
+      .Twilio-TaskCanvasHeader-EndTask,
+      [data-testid="complete-task-button"],
+      [data-testid="wrapup-complete-task-button"] {
+        display: none !important;
+      }
     `;
     document.head.appendChild(style);
 
@@ -63,10 +70,27 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
 
     console.log('[IsthaAgentAssistPlugin] RightPanel registered in Panel2');
 
-    // Block manual task completion — the system auto-completes tasks after the call ends.
-    // This prevents agents from clicking "Complete" early and stealing wrap-up time.
-    Actions.replaceAction('CompleteTask', async () => {
-      console.log('[IsthaAgentAssistPlugin] Manual CompleteTask blocked — system handles task completion');
+    // Remove the Complete button from the UI so agents cannot manually complete tasks
+    try { flex.TaskListButtons.Content.remove('wrapup'); } catch {}
+    try { flex.TaskCanvasHeader.Content.remove('actions'); } catch {}
+
+    // Auto-complete tasks when they enter wrap-up (triggered by either party hanging up).
+    // The 3-second delay gives SAICPanel time to submit the summary first.
+    const autoCompleted = new Set();
+    Manager.getInstance().store.subscribe(() => {
+      const tasks = Manager.getInstance().store.getState()?.flex?.worker?.tasks;
+      if (!tasks) return;
+      for (const task of tasks.values()) {
+        const sid = task.taskSid || task.sid;
+        if (task.status === 'wrapping' && !autoCompleted.has(sid)) {
+          autoCompleted.add(sid);
+          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 3s');
+          setTimeout(() => {
+            Actions.invokeAction('CompleteTask', { task })
+              .catch((e) => console.error('[IsthaAgentAssistPlugin] CompleteTask failed:', e));
+          }, 3000);
+        }
+      }
     });
   }
 }
