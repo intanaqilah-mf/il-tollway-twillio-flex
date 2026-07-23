@@ -369,7 +369,7 @@ function CopyableValue({ value, placeholder }) {
 }
 
 // Alias so the existing <StatedReasonValue> JSX is untouched
-const StatedReasonValue = ({ value }) => <CopyableValue value={value} />;
+const StatedReasonValue = ({ value }) => <CopyableValue value={value} placeholder="Caller's reason to call" />;
 
 // Copy-on-click for values inside the dark navy header (white text styling)
 function CopyableHeaderMeta({ value }) {
@@ -591,13 +591,13 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColLeft}>
           <div style={s.fieldLabel}>Caller ID</div>
           <div style={s.fieldValue}>
-            <CopyableValue value={callerId} placeholder="—" />
+            <CopyableValue value={callerId} placeholder="Incoming phone number" />
           </div>
         </div>
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Account Number</div>
           <div style={s.fieldValue}>
-            <CopyableValue value={accountNumber} />
+            <CopyableValue value={accountNumber} placeholder="Caller's account number" />
           </div>
         </div>
       </div>
@@ -609,7 +609,7 @@ const SAICPanel = ({ task: taskProp }) => {
           <div style={{ ...s.fieldValue, ...s.authRow }}>
             <span style={{ ...s.authDot, background: authDotColor }} />
             <span style={{ color: authTextColor, fontWeight: '600' }}>
-              {authLabel || <Placeholder text="—" />}
+              {authLabel || <Placeholder text="Awaiting caller verification" />}
             </span>
           </div>
         </div>
@@ -624,7 +624,7 @@ const SAICPanel = ({ task: taskProp }) => {
                 </span>
               </>
             ) : (
-              <Placeholder text="—" />
+              <Placeholder text="Detected during IVR interaction" />
             )}
           </div>
         </div>
@@ -638,7 +638,7 @@ const SAICPanel = ({ task: taskProp }) => {
               ? intents.map((intent) => (
                   <span key={intent} style={s.tag}>{intent}</span>
                 ))
-              : <Placeholder text="—" />
+              : <Placeholder text="Caller intent to call" />
             }
           </div>
         </div>
@@ -651,7 +651,7 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>IVR Path</div>
         <div style={s.fieldValue}>
-          {ivrPath || <Placeholder text="—" />}
+          {ivrPath || <Placeholder text="Menu path before reaching you" />}
         </div>
       </div>
 
@@ -678,7 +678,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   </span>
                 </>
               ) : (
-                <Placeholder text="—" />
+                <Placeholder text="Real time update sentiment" />
               )}
             </div>
           </div>
@@ -693,7 +693,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   </span>
                 </>
               ) : (
-                <Placeholder text="—" />
+                <Placeholder text="Overall sentiment hen call ends" />
               )}
             </div>
           </div>
@@ -712,7 +712,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   <div key={k} style={s.summaryField}>
                     <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
                     <div style={parsed[k] ? s.summaryFieldValue : { ...s.summaryFieldValue, color: colors.textSecondary, fontStyle: 'italic' }}>
-                      {parsed[k] || '—'}
+                      {parsed[k] || 'Not captured'}
                     </div>
                   </div>
                 ))}
@@ -721,7 +721,7 @@ const SAICPanel = ({ task: taskProp }) => {
           }
           return (
             <div style={{ ...s.summaryText, color: summary ? colors.textPrimary : colors.textSecondary }}>
-              {summary || 'Waiting for session summary...'}
+              {summary || 'AI summary auto-generates when call ends.'}
             </div>
           );
         })()}
