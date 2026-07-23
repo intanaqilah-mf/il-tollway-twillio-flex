@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Manager, Actions } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
@@ -509,7 +509,7 @@ const SAICPanel = ({ task: taskProp }) => {
   const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || null;
 
   // Live sentiment — dynamic, updated during the call, shown in post-call section
-  const sentimentLabel = sentiment?.sentimentLabel || preCallSentiment || null;
+  const sentimentLabel = sentiment?.sentimentLabel || null;
   const sentimentColor = getSentimentColor(sentimentLabel);
 
   const postCallDuration = formatDuration(postCall?.callDurationSeconds);
@@ -666,19 +666,37 @@ const SAICPanel = ({ task: taskProp }) => {
       </div>
       {/* Real-time Insights */}
       <div style={s.insightsBox}>
-        <div style={s.insightTitle}>Real-time Insights</div>
-        <div style={s.sentimentLine}>Sentiment Analysis</div>
-        <div style={s.sentimentValue}>
-          {sentimentLabel ? (
-            <>
-              <span style={{ ...s.sentimentDot, background: sentimentColor }} />
-              <span style={{ color: sentimentColor, fontWeight: '700', fontSize: '13px' }}>
-                {normalizeSentiment(sentimentLabel)}
-              </span>
-            </>
-          ) : (
-            <Placeholder text="—" />
-          )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+          <div style={s.fieldColLeft}>
+            <div style={s.sentimentLine}>Sentiment Real-time</div>
+            <div style={s.sentimentValue}>
+              {sentimentLabel ? (
+                <>
+                  <span style={{ ...s.sentimentDot, background: sentimentColor }} />
+                  <span style={{ color: sentimentColor, fontWeight: '700', fontSize: '13px' }}>
+                    {normalizeSentiment(sentimentLabel)}
+                  </span>
+                </>
+              ) : (
+                <Placeholder text="—" />
+              )}
+            </div>
+          </div>
+          <div style={s.fieldColRight}>
+            <div style={s.sentimentLine}>Overall Sentiment</div>
+            <div style={s.sentimentValue}>
+              {postCall?.overallSentiment ? (
+                <>
+                  <span style={{ ...s.sentimentDot, background: getSentimentColor(postCall.overallSentiment) }} />
+                  <span style={{ color: getSentimentColor(postCall.overallSentiment), fontWeight: '700', fontSize: '13px' }}>
+                    {normalizeSentiment(postCall.overallSentiment)}
+                  </span>
+                </>
+              ) : (
+                <Placeholder text="—" />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -717,7 +735,7 @@ const SAICPanel = ({ task: taskProp }) => {
           </span>
         ) : (
           <span style={{ color: colors.textSecondary, fontSize: '12px', fontStyle: 'italic' }}>
-            {originalAiSummary ? 'Awaiting call end...' : 'Awaiting session summary...'}
+            {originalAiSummary ? '' : ''}
           </span>
         )}
       </div>
