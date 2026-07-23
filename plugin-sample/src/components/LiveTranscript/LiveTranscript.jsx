@@ -269,7 +269,7 @@ const LiveTranscript = ({ task: taskProp }) => {
                 ? `WebSocket error: ${error}`
                 : connected
                   ? 'Connected — waiting for speech...'
-                  : 'Connecting to relay server...'}
+                  : 'Connecting the call...'}
           </div>
         ) : (
           messages.map((msg) => {

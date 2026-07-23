@@ -454,6 +454,29 @@ const SAICPanel = ({ task: taskProp }) => {
     setCachedPreCall(null);
   }, [taskSid]);
 
+  // Auto-answer incoming voice reservations
+  useEffect(() => {
+    let manager;
+    try { manager = Manager.getInstance(); } catch { return; }
+    if (!manager.workerClient) return;
+
+    const handleReservationCreated = async (reservation) => {
+      console.log("[AUTO ANSWER] Reservation Created");
+      if (reservation.task.taskChannelUniqueName !== "voice") return;
+      try {
+        setTimeout(async () => {
+          console.log("[AUTO ANSWER] Invoking AcceptTask");
+          await Actions.invokeAction("AcceptTask", { sid: reservation.sid });
+        }, 500);
+      } catch (err) {
+        console.error("[AUTO ANSWER ERROR]", err);
+      }
+    };
+
+    manager.workerClient.on("reservationCreated", handleReservationCreated);
+    return () => manager.workerClient.off("reservationCreated", handleReservationCreated);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Direct task-attribute fallbacks so pre-call section populates even when
   // the WebSocket hasn't delivered a pre_call_summary message yet.
   const attrs = task?.attributes || {};
@@ -693,7 +716,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   </span>
                 </>
               ) : (
-                <Placeholder text="Overall sentiment hen call ends" />
+                <Placeholder text="Overall sentiment when call ends" />
               )}
             </div>
           </div>
