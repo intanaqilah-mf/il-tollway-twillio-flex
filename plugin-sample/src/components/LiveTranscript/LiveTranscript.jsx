@@ -131,10 +131,8 @@ const s = {
   },
   callEndedBar: {
     margin: '4px 0 0 0',
-    padding: '10px 14px',
-    background: colors.callEndedBg,
-    border: `1px solid ${colors.borderColor}`,
-    borderRadius: '6px',
+    padding: '20px 14px',
+    background: 'transparent',
     fontSize: '12px',
     color: colors.callEndedText,
     fontStyle: 'italic',
@@ -259,9 +257,6 @@ const LiveTranscript = ({ task: taskProp }) => {
           }} />
           <span>Live Transcript</span>
         </div>
-        <span style={{ fontSize: '10px', fontWeight: '400', opacity: 0.75 }}>
-          {callEnded ? 'Call ended' : connected ? 'Connected' : (error ? 'Error' : 'Connecting...')}
-        </span>
       </div>
 
       {/* Messages */}
@@ -269,7 +264,7 @@ const LiveTranscript = ({ task: taskProp }) => {
         {messages.length === 0 ? (
           <div style={s.emptyState}>
             {callEnded
-              ? 'Call ended — no transcript available.'
+              ? ''
               : error
                 ? `WebSocket error: ${error}`
                 : connected
@@ -304,7 +299,7 @@ const LiveTranscript = ({ task: taskProp }) => {
             <span className="saic-call-failed-icon" style={{ display: 'inline-flex' }}>
               <CallFailedIcon decorative size="sizeIcon70" />
             </span>
-            {callDuration ? `Call ended — Duration: ${callDuration}` : 'Call ended'}
+            {callDuration ? `Call ended — Duration: ${callDuration}` : 'Awaiting your next call'}
           </div>
         )}
       </div>

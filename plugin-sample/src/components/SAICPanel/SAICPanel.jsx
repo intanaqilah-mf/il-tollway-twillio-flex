@@ -715,7 +715,7 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColLeft}>
           <div style={s.fieldLabel}>Caller ID</div>
           <div style={s.fieldValue}>
-            <CopyableValue value={callerId} placeholder="Waiting..." />
+            <CopyableValue value={callerId} placeholder="—" />
           </div>
         </div>
         <div style={s.fieldColRight}>
@@ -788,8 +788,6 @@ const SAICPanel = ({ task: taskProp }) => {
             : (postCallDuration || '')}
         </span>
       </div>
-      <div style={s.sectionSubtitle}>Pre-populated information from an IVR handoff</div>
-
       {/* Real-time Insights */}
       <div style={s.insightsBox}>
         <div style={s.insightTitle}>Real-time Insights</div>
@@ -803,7 +801,7 @@ const SAICPanel = ({ task: taskProp }) => {
               </span>
             </>
           ) : (
-            <Placeholder text="Waiting for live data..." />
+            <Placeholder text="—" />
           )}
         </div>
       </div>
