@@ -485,7 +485,11 @@ const SAICPanel = ({ task: taskProp }) => {
     attrs.callSid || attrs.call_sid || attrs.CallSid || null;
 
   const agentEmail = (() => {
-    try { return Manager.getInstance().user?.email || null; } catch { return null; }
+    try {
+      return Manager.getInstance().user?.email ||
+        Manager.getInstance().store.getState()?.flex?.worker?.attributes?.email ||
+        null;
+    } catch { return null; }
   })();
 
   const sentimentScore = sentiment?.sentimentScore ?? null;
@@ -630,7 +634,6 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColLeft}>
           <div style={s.fieldLabel}>Authentication Status</div>
           <div style={{ ...s.fieldValue, ...s.authRow }}>
-            <span style={{ ...s.authDot, background: authDotColor }} />
             <span style={{ color: authTextColor, fontWeight: '600' }}>
               {authLabel || <Placeholder text="Awaiting caller verification" />}
             </span>
