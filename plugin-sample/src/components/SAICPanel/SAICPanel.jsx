@@ -607,7 +607,7 @@ const SAICPanel = ({ task: taskProp }) => {
       callDurationSeconds: postCall?.callDurationSeconds ?? null,
       overallSentiment: postCall?.overallSentiment || sentimentLabel,
       aiSummary: originalAiSummary,
-      agentAssistTabActiveDuration: getTabFocusSeconds(),
+      agentAssistTabActiveDurationInSecs: getTabFocusSeconds(),
     };
   }
 
