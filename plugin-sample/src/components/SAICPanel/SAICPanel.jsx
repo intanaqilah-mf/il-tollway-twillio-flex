@@ -419,7 +419,7 @@ const SAICPanel = ({ task: taskProp }) => {
     } catch { return undefined; }
   }, [taskProp]);
 
-  const { preCall: wsPreCall, sentiment, postCall, sendMessage } = useAgentAssistWebSocket(task);
+  const { preCall: wsPreCall, sentiment, postCall, sendMessage, transferSummary } = useAgentAssistWebSocket(task);
 
   // Cache last known preCall so fields stay visible after the task is removed (post-call)
   const [cachedPreCall, setCachedPreCall] = useState(null);
@@ -568,9 +568,8 @@ const SAICPanel = ({ task: taskProp }) => {
   const statedReason = preCall?.statedReason || attrs.statedReason || null;
   const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || null;
 
-  // Transfer scenario: CSR1's AI summary carried in task attrs → display-only concatenation.
-  // statedReason in buildSummaryPayload is NOT affected.
-  const transferSummary = attrs.transferSummary || attrs.previousAgentSummary || null;
+  // transferSummary arrives via WebSocket 'transfer_summary' message pushed by the relay
+  // after CSR1's summary is ready. Display-only — statedReason in the payload is NOT affected.
 
   // Pre-call sentiment — static from IVR handoff, shown in pre-call section
   const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || null;
@@ -719,9 +718,18 @@ const SAICPanel = ({ task: taskProp }) => {
           <div style={s.fieldLabel}>Stated Reason</div>
           {transferSummary ? (
             <div>
-              <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '3px' }}>Previous Agent</div>
-              <div style={{ color: colors.textPrimary, fontWeight: '500', lineHeight: '1.4', marginBottom: '6px' }}>{transferSummary}</div>
-              <div style={{ borderTop: `1px solid ${colors.borderColor}`, margin: '4px 0 6px' }} />
+              <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>Previous Agent</div>
+              {transferSummary.sections ? (
+                Object.entries(transferSummary.sections).map(([key, val]) => (
+                  <div key={key} style={{ marginBottom: '4px' }}>
+                    <div style={{ fontSize: '10px', color: colors.textLabel, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '1px' }}>{key}</div>
+                    <div style={{ color: colors.textPrimary, fontSize: '12px', lineHeight: '1.4' }}>{val}</div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: colors.textPrimary, fontWeight: '500', lineHeight: '1.4', marginBottom: '6px', fontSize: '12px' }}>{transferSummary.text}</div>
+              )}
+              <div style={{ borderTop: `1px solid ${colors.borderColor}`, margin: '6px 0' }} />
               <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '3px' }}>Stated Reason</div>
               <StatedReasonValue value={statedReason} />
             </div>
