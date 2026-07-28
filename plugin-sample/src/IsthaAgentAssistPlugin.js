@@ -165,11 +165,11 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
         const sid = task.taskSid || task.sid;
         if (task.status === 'wrapping' && !autoCompleted.has(sid)) {
           autoCompleted.add(sid);
-          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 3s');
+          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 7s');
           setTimeout(() => {
             Actions.invokeAction('CompleteTask', { task })
               .catch((e) => console.error('[IsthaAgentAssistPlugin] CompleteTask failed:', e));
-          }, 3000);
+          }, 10000);
         }
       }
     });

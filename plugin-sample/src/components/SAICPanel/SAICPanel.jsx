@@ -435,6 +435,12 @@ const SAICPanel = ({ task: taskProp }) => {
   const hasSubmittedRef = useRef(false);
   const callEndedRef = useRef(false);
 
+  // Stopwatch: counts seconds this tab is the active tab.
+  // Pauses when user switches to another tab; continues through minimize.
+  const tabFocusStartRef = useRef(document.visibilityState === 'visible' ? Date.now() : null);
+  const tabFocusSecondsRef = useRef(0);
+  const windowBlurredRef = useRef(false);
+
   const taskSid = task?.taskSid || task?.sid || null;
 
   // Populate summary from postCall when it arrives
@@ -444,6 +450,34 @@ const SAICPanel = ({ task: taskProp }) => {
     setOriginalAiSummary((prev) => prev || postCall.summary);
   }, [postCall?.summary]);
 
+  // Tab active-time tracking: pause on tab switch, continue through minimize.
+  // blur fires before visibilitychange on minimize → windowBlurredRef is true
+  // when the visibilitychange handler runs, so we skip pausing for minimize.
+  useEffect(() => {
+    const onBlur = () => { windowBlurredRef.current = true; };
+    const onFocus = () => { windowBlurredRef.current = false; };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        // Tab switch within same window: window is still focused (not blurred) → pause
+        if (!windowBlurredRef.current && tabFocusStartRef.current !== null) {
+          tabFocusSecondsRef.current += (Date.now() - tabFocusStartRef.current) / 1000;
+          tabFocusStartRef.current = null;
+        }
+        // Minimize (window blurred): skip — treat as still active
+      } else {
+        tabFocusStartRef.current = Date.now();
+      }
+    };
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   // Reset on new task
   useEffect(() => {
     setSummary('');
@@ -452,6 +486,8 @@ const SAICPanel = ({ task: taskProp }) => {
     hasSubmittedRef.current = false;
     callEndedRef.current = false;
     setCachedPreCall(null);
+    tabFocusSecondsRef.current = 0;
+    tabFocusStartRef.current = document.visibilityState === 'visible' ? Date.now() : null;
   }, [taskSid]);
 
   // Auto-answer incoming voice reservations
@@ -532,6 +568,10 @@ const SAICPanel = ({ task: taskProp }) => {
   const statedReason = preCall?.statedReason || attrs.statedReason || null;
   const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || null;
 
+  // Transfer scenario: CSR1's AI summary carried in task attrs → display-only concatenation.
+  // statedReason in buildSummaryPayload is NOT affected.
+  const transferSummary = attrs.transferSummary || attrs.previousAgentSummary || null;
+
   // Pre-call sentiment — static from IVR handoff, shown in pre-call section
   const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || null;
 
@@ -540,6 +580,12 @@ const SAICPanel = ({ task: taskProp }) => {
   const sentimentColor = getSentimentColor(sentimentLabel);
 
   const postCallDuration = formatDuration(postCall?.callDurationSeconds);
+
+  // Returns total seconds the agent had this tab as the active tab during the call
+  const getTabFocusSeconds = () => {
+    const live = tabFocusStartRef.current !== null ? (Date.now() - tabFocusStartRef.current) / 1000 : 0;
+    return Math.round(tabFocusSecondsRef.current + live);
+  };
 
   // Payload builder — closes over current render state via buildPayloadRef
   function buildSummaryPayload() {
@@ -561,6 +607,7 @@ const SAICPanel = ({ task: taskProp }) => {
       callDurationSeconds: postCall?.callDurationSeconds ?? null,
       overallSentiment: postCall?.overallSentiment || sentimentLabel,
       aiSummary: originalAiSummary,
+      agentAssistTabActiveDuration: getTabFocusSeconds(),
     };
   }
 
@@ -670,7 +717,17 @@ const SAICPanel = ({ task: taskProp }) => {
         </div>
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Stated Reason</div>
-          <StatedReasonValue value={statedReason} />
+          {transferSummary ? (
+            <div>
+              <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '3px' }}>Previous Agent</div>
+              <div style={{ color: colors.textPrimary, fontWeight: '500', lineHeight: '1.4', marginBottom: '6px' }}>{transferSummary}</div>
+              <div style={{ borderTop: `1px solid ${colors.borderColor}`, margin: '4px 0 6px' }} />
+              <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '3px' }}>Stated Reason</div>
+              <StatedReasonValue value={statedReason} />
+            </div>
+          ) : (
+            <StatedReasonValue value={statedReason} />
+          )}
         </div>
       </div>
 
