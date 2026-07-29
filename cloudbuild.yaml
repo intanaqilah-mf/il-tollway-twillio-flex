@@ -15,7 +15,7 @@ steps:
       - "-f"
       - Dockerfile
       - "-t"
-      - us-central1-docker.pkg.dev/$PROJECT_ID/istha-repo/$_SERVICE_NAME:$COMMIT_SHA
+      - us-central1-docker.pkg.dev/$PROJECT_ID/istha-ccas-images-nonprod/$_SERVICE_NAME:$COMMIT_SHA
       - .
 
   # 3️⃣ Push Image to Artifact Registry
@@ -23,7 +23,7 @@ steps:
     id: Push
     args:
       - push
-      - us-central1-docker.pkg.dev/$PROJECT_ID/istha-repo/$_SERVICE_NAME:$COMMIT_SHA
+      - us-central1-docker.pkg.dev/$PROJECT_ID/istha-ccas-images-nonprod/$_SERVICE_NAME:$COMMIT_SHA
 
   # 4️⃣ Deploy to Cloud Run
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -35,13 +35,13 @@ steps:
       - update
       - $_SERVICE_NAME
       - "--platform=managed"
-      - "--image=us-central1-docker.pkg.dev/$PROJECT_ID/istha-repo/$_SERVICE_NAME:$COMMIT_SHA"
+      - "--image=us-central1-docker.pkg.dev/$PROJECT_ID/istha-ccas-images-nonprod/$_SERVICE_NAME:$COMMIT_SHA"
       - "--region=$_DEPLOY_REGION"
       - "--port=8080"
       - "--quiet"
 
 images:
-  - us-central1-docker.pkg.dev/$PROJECT_ID/istha-repo/$_SERVICE_NAME:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/istha-ccas-images-nonprod/$_SERVICE_NAME:$COMMIT_SHA
 
 options:
   substitutionOption: ALLOW_LOOSE
