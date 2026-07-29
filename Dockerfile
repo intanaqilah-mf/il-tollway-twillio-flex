@@ -1,4 +1,4 @@
-# Stage 1: build Twilio Flex plugin
+# Stage 1: build React app
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY plugin-sample/package.json plugin-sample/package-lock.json ./
