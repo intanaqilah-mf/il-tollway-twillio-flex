@@ -3,7 +3,8 @@
   "version": "4.0.32",
   "private": true,
   "scripts": {
-    "postinstall": "flex-plugin pre-script-check"
+    "postinstall": "flex-plugin pre-script-check",
+    "build": "flex-plugin build"
   },
   "dependencies": {
     "@twilio/flex-plugin": "7.1.2",
