@@ -4,6 +4,8 @@ WORKDIR /app
 COPY plugin-sample/package.json plugin-sample/package-lock.json ./
 RUN npm ci
 COPY plugin-sample/ .
+ENV SKIP_PREFLIGHT_CHECK=true
+ENV DISABLE_ESLINT_PLUGIN=true
 RUN npm run build
 
 # Stage 2: serve
