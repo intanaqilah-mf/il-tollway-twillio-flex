@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { Manager, Actions } from '@twilio/flex-ui';
+import { useState, useEffect, useCallback } from 'react';
 
 const WSS_URL = 'wss://gapi.getipass.com/ivr/relay-server-open/dev/browser-ui/streaming';
 const MAX_BACKOFF_MS = 30000;
@@ -10,18 +9,13 @@ const CARD_15_RE = /\b\d{4}[ -]?\d{6}[ -]?\d{5}\b/g;
 const EXPIRY_RE = /\b(0?[1-9]|1[0-2])[/\s]\d{2}(?:\d{2})?\b/g;
 
 // Context-aware: agent phrases that signal the customer is about to read card data.
-// Intentionally broad to survive speech-to-text mishearings:
-//   - \bcv[a-z]?\b catches CV, CVV, CVC, CVB, CV2, etc. (third letter optional)
-//   - expir covers expiration/expiry/expire/expiring
-//   - (three|3)[- ]?digit covers "three digit code" as an alternative to saying CVV
-//   - valid through/thru/until covers expiry date alternatives
 const CARD_REQUEST_RE = new RegExp(
   [
     'card\\s*(number|no\\.?|num|digit|detail)',
     'expir',
     'valid\\s*(through|thru|until|till)',
     'month.*year|year.*month',
-    '\\bcv[a-z]?\\b',           // CV, CVV, CVC, CVB — third letter optional
+    '\\bcv[a-z]?\\b',
     'security\\s*code',
     'verification\\s*code',
     '(three|3)[\\s-]?digit',
@@ -30,7 +24,6 @@ const CARD_REQUEST_RE = new RegExp(
   ].join('|'),
   'i'
 );
-
 
 // Speech-to-text often mishears "i-Pass" as: iPad, IPad, iPass, ipass, i pass, i-pass
 function normalizeTranscript(text) {
@@ -43,8 +36,6 @@ function normalizeTranscript(text) {
     .replace(/\bi pass\b/gi, 'i-Pass');
 }
 
-// Called only for turns outside a known card-data context.
-// Catches formatted card numbers that appear incidentally (e.g. agent repeating back).
 function redactSensitiveData(text) {
   if (!text) return text;
   return text
@@ -53,17 +44,28 @@ function redactSensitiveData(text) {
     .replace(EXPIRY_RE, '**/**');
 }
 
+// Read auth token and agent email from window.ISTHA_AGENT_CONFIG (set by SAP UI5 host)
+// or from URL query params as fallback.
+function getAgentAuthConfig() {
+  const w = (typeof window !== 'undefined' && window.ISTHA_AGENT_CONFIG) || {};
+  const p = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  return {
+    token: w.token || p.get('token') || null,
+    agentEmail: w.agentEmail || p.get('agentEmail') || null,
+  };
+}
+
 const EMPTY_STATE = {
   preCall: null,
   transcript: [],
   sentiment: null,
   postCall: null,
+  transferSummary: null,
   connected: false,
   error: null,
 };
 
-// One WebSocket per task SID, shared across ALL hook instances (SAICPanel,
-// LiveTranscript, AgentAssistPanel).
+// One WebSocket per task SID, shared across ALL hook instances (SAICPanel, LiveTranscript).
 // Entry shape: { state, listeners, ws, retryCount, reconnectTimer, intentionalClose, callSid, taskAttrs }
 const registry = new Map();
 
@@ -78,18 +80,11 @@ function openConnection(taskSid) {
   const entry = registry.get(taskSid);
   if (!entry || entry.ws) return;
 
-  let flexToken;
-  try {
-    flexToken = Manager.getInstance().user.token;
-  } catch {
-    entry.state.error = 'Failed to retrieve Flex token';
-    notify(taskSid);
-    return;
-  }
+  const { token, agentEmail } = getAgentAuthConfig();
 
-  if (!flexToken || typeof flexToken !== 'string') {
-    entry.state.error = 'No Flex token available';
-    console.error('[AA] token invalid:', typeof flexToken);
+  if (!token || typeof token !== 'string') {
+    entry.state.error = 'No auth token available';
+    console.error('[AA] token missing — set window.ISTHA_AGENT_CONFIG.token or ?token= URL param');
     notify(taskSid);
     return;
   }
@@ -97,26 +92,17 @@ function openConnection(taskSid) {
   entry.intentionalClose = false;
   console.log('[AA] opening WebSocket for task', taskSid);
 
-  // Token passed via Sec-WebSocket-Protocol header (second arg) — keeps it out
-  // of the URL and server access logs. Server must echo back the subprotocol.
-  const ws = new WebSocket(WSS_URL, [`Bearer.${flexToken}`]);
+  // Token passed via Sec-WebSocket-Protocol header — keeps it out of the URL and server logs.
+  const ws = new WebSocket(WSS_URL, [`Bearer.${token}`]);
   entry.ws = ws;
 
   ws.onopen = () => {
     console.log('[AA] WebSocket connected ✅');
-    console.log('[AA] token prefix:', flexToken?.slice(0, 30));
+    console.log('[AA] token prefix:', token?.slice(0, 30));
     console.log('[AA] task attrs on open:', JSON.stringify(entry.taskAttrs));
     entry.state.connected = true;
     entry.state.error = null;
     notify(taskSid);
-
-    let agentEmail = null;
-    try {
-      agentEmail =
-        Manager.getInstance().user?.email ||
-        Manager.getInstance().store.getState()?.flex?.worker?.attributes?.email ||
-        null;
-    } catch {}
 
     const subscribeMsg = {
       type: 'subscribe',
@@ -139,9 +125,7 @@ function openConnection(taskSid) {
       return;
     }
 
-    // Server sent real data — connection is stable, reset retry counter
     entry.retryCount = 0;
-    // Support both flat shape { type, field } and wrapped shape { type, payload: { field } }
     const p = data.payload || data;
     switch (data.type) {
       case 'pre_call_summary':
@@ -165,15 +149,10 @@ function openConnection(taskSid) {
       case 'transcript': {
         console.log(`[AA] ✅ transcript [${p.speaker}]:`, p.transcript);
         const inCardContext = p.speaker === 'customer' && entry.awaitingCardTurns > 0;
-        // When card context is active, replace the ENTIRE customer utterance — not just
-        // digits. Expiry spoken as "September thirty-first" has no digits to mask, so
-        // selective regex fails. Full replacement is also PCI-DSS aligned.
         const redacted = inCardContext
           ? '[card data not logged]'
           : normalizeTranscript(redactSensitiveData(p.transcript));
         if (p.speaker === 'agent' && CARD_REQUEST_RE.test(p.transcript)) {
-          // Each agent card-data request resets the counter to 2 — protects the direct
-          // reply plus one overflow turn in case the next agent trigger is misheard
           entry.awaitingCardTurns = 2;
         } else if (p.speaker === 'customer' && entry.awaitingCardTurns > 0) {
           entry.awaitingCardTurns -= 1;
@@ -199,6 +178,15 @@ function openConnection(taskSid) {
           callDurationSeconds: p.callDurationSeconds,
         };
         break;
+      case 'transfer_summary': {
+        const d = p.data || p;
+        console.log('[AA] ✅ transfer_summary received, callSid:', d.callSid);
+        entry.state.transferSummary = {
+          text: d.transferSummary,
+          sections: d.transferSummarySections || null,
+        };
+        break;
+      }
       default:
         console.log('[AA] unknown message type:', data.type, data);
         break;
@@ -212,7 +200,6 @@ function openConnection(taskSid) {
     entry.state.error = 'WebSocket connection error';
     entry.ws = null;
     notify(taskSid);
-    // scheduleReconnect(taskSid); // TEMP: disabled — reconnect loop was crashing the server
   };
 
   ws.onclose = (e) => {
@@ -220,11 +207,6 @@ function openConnection(taskSid) {
     entry.state.connected = false;
     entry.ws = null;
     notify(taskSid);
-    // onerror fires before onclose on error — only reconnect here for clean unexpected closes
-    // if (!entry.intentionalClose && entry.state.error === null) {
-    //   scheduleReconnect(taskSid); // TEMP: disabled — reconnect loop was crashing the server
-    // }
-    // Reset error so the next close (from onclose only, no onerror) triggers reconnect
     entry.state.error = null;
   };
 }
@@ -234,7 +216,6 @@ function scheduleReconnect(taskSid) {
   if (!entry || entry.intentionalClose || entry.reconnectTimer) return;
 
   entry.retryCount += 1;
-  // Exponential backoff: 2s, 4s, 8s, 16s, 30s, 30s, … (no total retry cap)
   const delay = Math.min(2000 * Math.pow(2, entry.retryCount - 1), MAX_BACKOFF_MS);
   console.log(`[AA] scheduling reconnect (attempt ${entry.retryCount}) in ${Math.round(delay / 1000)}s`);
   entry.reconnectTimer = setTimeout(() => {
@@ -259,11 +240,23 @@ function teardownConnection(taskSid) {
   }
 }
 
+function sendMessageToRelay(taskSid, payload) {
+  const entry = registry.get(taskSid);
+  if (!entry?.ws || entry.ws.readyState !== WebSocket.OPEN) {
+    console.error('[AA] sendMessage: WebSocket not open for task', taskSid);
+    return false;
+  }
+  try {
+    entry.ws.send(JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    console.error('[AA] sendMessage failed:', e);
+    return false;
+  }
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useAgentAssistWebSocket(task) {
-  // Use stable primitive SID — NOT the task object — as the dependency key.
-  // The task object gets a new reference on every Twilio event which previously
-  // tore down and rebuilt the WebSocket connection 9+ times per call.
   const taskSid = task?.taskSid || task?.sid || null;
 
   const [state, setState] = useState({ ...EMPTY_STATE });
@@ -279,8 +272,6 @@ export function useAgentAssistWebSocket(task) {
       const callSid = attrs.call_sid || attrs.callSid || attrs.CallSid || null;
       console.log('[AA] registering task', taskSid, '| callSid:', callSid);
 
-      // Seed preCall from task attributes immediately — no WebSocket needed for this.
-      // WebSocket pre_call_summary will override if/when it arrives.
       const seededPreCall = {
         callersPhoneNumber: attrs.from || attrs.caller || null,
         authenticationStatus: attrs.authenticationStatus || null,
@@ -301,7 +292,7 @@ export function useAgentAssistWebSocket(task) {
         retryCount: 0,
         reconnectTimer: null,
         intentionalClose: false,
-        awaitingCardTurns: 0,  // redact next N customer turns after a card-data request
+        awaitingCardTurns: 0,
         callSid,
         taskAttrs: attrs,
       });
@@ -309,22 +300,8 @@ export function useAgentAssistWebSocket(task) {
 
     const entry = registry.get(taskSid);
 
-    // Relay server marks a call "active for agent" only after the conference bridge
-    // is established — which happens when the agent accepts. Listen for the Flex
-    // afterAcceptTask action (fires post-acceptance) instead of connecting immediately,
-    // which would always get a 1008 rejection because the call isn't active yet.
-    const onAfterAccept = (payload) => {
-      const acceptedSid = payload?.task?.taskSid || payload?.task?.sid;
-      if (acceptedSid === taskSid && !entry.ws) {
-        openConnection(taskSid);
-      }
-    };
-    Actions.addListener('afterAcceptTask', onAfterAccept);
-
-    // If component mounts mid-call (e.g. panel re-render during active call),
-    // the afterAcceptTask event already fired — open immediately.
-    const alreadyActive = ['assigned', 'accepted', 'wrapping'].includes(task?.status);
-    if (alreadyActive && !entry.ws) {
+    // Connect immediately — in SAP UI5 the component mounts only when a call is active.
+    if (!entry.ws) {
       openConnection(taskSid);
     }
 
@@ -333,7 +310,6 @@ export function useAgentAssistWebSocket(task) {
     entry.listeners.add(listener);
 
     return () => {
-      Actions.removeListener('afterAcceptTask', onAfterAccept);
       const e = registry.get(taskSid);
       if (!e) return;
       e.listeners.delete(listener);
@@ -345,5 +321,10 @@ export function useAgentAssistWebSocket(task) {
     };
   }, [taskSid]);
 
-  return state;
+  const sendMessage = useCallback(
+    (payload) => (taskSid ? sendMessageToRelay(taskSid, payload) : false),
+    [taskSid],
+  );
+
+  return { ...state, sendMessage };
 }

@@ -1,17 +1,44 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Manager, withTaskContext } from '@twilio/flex-ui';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
-import { CallFailedIcon } from '@twilio-paste/icons/esm/CallFailedIcon';
 
-function getFlexTask() {
-  try {
-    const flex = Manager.getInstance().store.getState()?.flex;
-    const sid = flex?.view?.selectedTaskSid;
-    const tasks = flex?.worker?.tasks;
-    if (sid && tasks?.get) return tasks.get(sid) || null;
-    if (tasks?.size > 0) return tasks.values().next().value || null;
-  } catch {}
-  return null;
+// SAP UI5 host sets window.ISTHA_AGENT_CONFIG before React loads.
+function getAgentConfig() {
+  const w = (typeof window !== 'undefined' && window.ISTHA_AGENT_CONFIG) || {};
+  const p = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const get = (key) => w[key] || p.get(key) || null;
+  return {
+    callSid: get('callSid'),
+    taskSid: get('taskSid'),
+    from: get('from'),
+    authenticationStatus: get('authenticationStatus'),
+    lastOpenIntent: get('lastOpenIntent'),
+    IVRPathSummary: get('IVRPathSummary'),
+    statedReason: get('statedReason'),
+    sentimentAnalysis: get('sentimentAnalysis'),
+    accountNumber: get('accountNumber'),
+    accountName: get('accountName'),
+  };
+}
+
+function buildTaskFromConfig(cfg) {
+  if (!cfg.callSid && !cfg.taskSid) return null;
+  const sid = cfg.taskSid || cfg.callSid;
+  return {
+    sid,
+    taskSid: sid,
+    attributes: {
+      call_sid: cfg.callSid,
+      callSid: cfg.callSid,
+      from: cfg.from,
+      authenticationStatus: cfg.authenticationStatus,
+      lastOpenIntent: cfg.lastOpenIntent,
+      IVRPathSummary: cfg.IVRPathSummary,
+      statedReason: cfg.statedReason,
+      sentimentAnalysis: cfg.sentimentAnalysis,
+      accountNumber: cfg.accountNumber,
+      accountName: cfg.accountName,
+    },
+  };
 }
 
 const colors = {
@@ -26,7 +53,6 @@ const colors = {
   bubbleAgent: '#e8f2ff',
   bubbleCustomer: '#ffffff',
   borderBubble: '#e0e0e0',
-  callEndedBg: '#eef0f2',
   callEndedText: '#6a6d70',
   liveIndicator: '#bb0000',
 };
@@ -64,9 +90,7 @@ const s = {
     width: '8px',
     height: '8px',
     borderRadius: '50%',
-    background: colors.liveIndicator,
     flexShrink: 0,
-    animation: 'saic-pulse 1.4s ease-in-out infinite',
   },
   scrollArea: {
     flex: 1,
@@ -131,46 +155,13 @@ const s = {
   },
   callEndedBar: {
     margin: '4px 0 0 0',
-    padding: '10px 14px',
-    background: colors.callEndedBg,
-    border: `1px solid ${colors.borderColor}`,
-    borderRadius: '6px',
+    padding: '20px 14px',
+    background: 'transparent',
     fontSize: '12px',
     color: colors.callEndedText,
     fontStyle: 'italic',
     textAlign: 'center',
     alignSelf: 'stretch',
-  },
-  liveInput: {
-    borderTop: `1px solid ${colors.borderColor}`,
-    background: colors.white,
-    padding: '10px 16px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    flexShrink: 0,
-  },
-  liveInputField: {
-    flex: 1,
-    border: `1px solid ${colors.borderColor}`,
-    borderRadius: '4px',
-    padding: '7px 12px',
-    fontSize: '13px',
-    fontFamily: 'inherit',
-    color: colors.textPrimary,
-    outline: 'none',
-    background: colors.bgChat,
-  },
-  sendBtn: {
-    padding: '7px 18px',
-    background: '#0070b9',
-    color: colors.white,
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '600',
-    fontFamily: 'inherit',
   },
 };
 
@@ -185,35 +176,24 @@ function formatDuration(seconds) {
   return `${m}m ${s}s`;
 }
 
+// Inline SVG phone-with-slash icon
+const CallEndedIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6a6d70" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.43 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.34 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.31 9.9" />
+    <line x1="23" y1="1" x2="1" y2="23" />
+  </svg>
+);
 
 const LiveTranscript = ({ task: taskProp }) => {
-  // withTaskContext may not inject task in Panel2 (deployed) — fall back to Flex store
-  const [task, setTask] = useState(() => taskProp || getFlexTask());
-  // true only before we've had a chance to read the store — prevents "call ended" flash
-  const [loading, setLoading] = useState(!taskProp && !getFlexTask());
+  // In SAP UI5 there is no Twilio Flex store — build task from window.ISTHA_AGENT_CONFIG.
+  const [task] = useState(() => {
+    if (taskProp) return taskProp;
+    return buildTaskFromConfig(getAgentConfig());
+  });
 
-  useEffect(() => {
-    console.log('[LiveTranscript] mount — taskProp:', taskProp?.taskSid ?? null, '| storeTask:', getFlexTask()?.taskSid ?? null);
-    if (taskProp) {
-      setTask(taskProp);
-      setLoading(false);
-      return;
-    }
-    const fromStore = getFlexTask();
-    setTask(fromStore);
-    setLoading(false);
-    try {
-      return Manager.getInstance().store.subscribe(() => {
-        const t = getFlexTask();
-        setTask(t);
-        setLoading(false);
-      });
-    } catch { return undefined; }
-  }, [taskProp]);
-
-  const { transcript: wsTranscript, postCall } = useAgentAssistWebSocket(task);
+  const { transcript: wsTranscript, postCall, connected, error } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
-  const callEnded = !loading && !task;
+  const callEnded = !task;
 
   const messages = wsTranscript.map((entry) => ({
     id: entry.ts,
@@ -232,23 +212,25 @@ const LiveTranscript = ({ task: taskProp }) => {
 
   return (
     <div style={s.container}>
-      {/* ── PULSE ANIMATION + ICON SIZING ── */}
       <style>{`
         @keyframes saic-pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.3; }
-        }
-        .saic-call-failed-icon svg {
-          width: 40px;
-          height: 40px;
-          color: #6a6d70;
         }
       `}</style>
 
       {/* Header */}
       <div style={s.header}>
         <div style={s.headerLeft}>
-          {!callEnded && <span style={s.liveDot} />}
+          <span style={{
+            ...s.liveDot,
+            background: callEnded
+              ? '#888780'
+              : connected
+                ? colors.liveIndicator
+                : (error ? '#bb0000' : '#f0a500'),
+            animation: connected && !callEnded ? 'saic-pulse 1.4s ease-in-out infinite' : 'none',
+          }} />
           <span>Live Transcript</span>
         </div>
       </div>
@@ -257,7 +239,13 @@ const LiveTranscript = ({ task: taskProp }) => {
       <div style={s.scrollArea} ref={scrollRef}>
         {messages.length === 0 ? (
           <div style={s.emptyState}>
-            {callEnded ? 'No transcript available.' : 'Waiting for transcript...'}
+            {callEnded
+              ? ''
+              : error
+                ? `WebSocket error: ${error}`
+                : connected
+                  ? 'Connected — waiting for speech...'
+                  : 'Connecting the call...'}
           </div>
         ) : (
           messages.map((msg) => {
@@ -282,18 +270,15 @@ const LiveTranscript = ({ task: taskProp }) => {
           })
         )}
 
-        {callEnded && (
-          <div style={{ ...s.callEndedBar, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '20px 14px' }}>
-            <span className="saic-call-failed-icon" style={{ display: 'inline-flex' }}>
-              <CallFailedIcon decorative size="sizeIcon70" />
-            </span>
-            {callDuration ? `Call ended — Duration: ${callDuration}` : 'Call ended'}
+        {(callEnded || postCall) && (
+          <div style={{ ...s.callEndedBar, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <CallEndedIcon />
+            {callDuration ? `Call ended — Duration: ${callDuration}` : 'Awaiting your next call'}
           </div>
         )}
       </div>
-
     </div>
   );
 };
 
-export default withTaskContext(LiveTranscript);
+export default LiveTranscript;

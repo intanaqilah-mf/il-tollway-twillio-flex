@@ -1,18 +1,48 @@
-import React, { useState, useEffect } from 'react';
-import { Manager } from '@twilio/flex-ui';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAgentAssistWebSocket } from '../../hooks/useAgentAssistWebSocket';
 
-// Flex Panel1.Content and CRMContainer.Content do not always inject the `task`
-// prop the same way Panel2 does. Read directly from the Flex Redux store as a fallback.
-function getFlexTask() {
-  try {
-    const flex = Manager.getInstance().store.getState()?.flex;
-    const sid = flex?.view?.selectedTaskSid;
-    const tasks = flex?.worker?.tasks;
-    if (sid && tasks?.get) return tasks.get(sid) || null;
-    if (tasks?.size > 0) return tasks.values().next().value || null;
-  } catch {}
-  return null;
+// SAP UI5 host sets window.ISTHA_AGENT_CONFIG before React loads.
+// URL query params are used as fallback for local dev / testing.
+function getAgentConfig() {
+  const w = (typeof window !== 'undefined' && window.ISTHA_AGENT_CONFIG) || {};
+  const p = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const get = (key) => w[key] || p.get(key) || null;
+  return {
+    token: get('token'),
+    callSid: get('callSid'),
+    taskSid: get('taskSid'),
+    agentEmail: get('agentEmail'),
+    from: get('from'),
+    authenticationStatus: get('authenticationStatus'),
+    lastOpenIntent: get('lastOpenIntent'),
+    IVRPathSummary: get('IVRPathSummary'),
+    statedReason: get('statedReason'),
+    sentimentAnalysis: get('sentimentAnalysis'),
+    accountNumber: get('accountNumber'),
+    accountName: get('accountName'),
+  };
+}
+
+// Build a task-like object from config so useAgentAssistWebSocket gets callSid + attributes.
+function buildTaskFromConfig(cfg) {
+  if (!cfg.callSid && !cfg.taskSid) return null;
+  const sid = cfg.taskSid || cfg.callSid;
+  return {
+    sid,
+    taskSid: sid,
+    attributes: {
+      call_sid: cfg.callSid,
+      callSid: cfg.callSid,
+      from: cfg.from,
+      authenticationStatus: cfg.authenticationStatus,
+      lastOpenIntent: cfg.lastOpenIntent,
+      IVRPathSummary: cfg.IVRPathSummary,
+      statedReason: cfg.statedReason,
+      sentimentAnalysis: cfg.sentimentAnalysis,
+      accountNumber: cfg.accountNumber,
+      accountName: cfg.accountName,
+    },
+  };
 }
 
 const colors = {
@@ -43,8 +73,6 @@ const s = {
     overflowY: 'auto',
     overflowX: 'hidden',
   },
-
-  // ── Section headers ──────────────────────────────────────────────
   sectionBar: {
     background: colors.navyHeader,
     color: colors.white,
@@ -67,16 +95,6 @@ const s = {
     whiteSpace: 'nowrap',
     textTransform: 'none',
   },
-  sectionSubtitle: {
-    background: '#eef0f2',
-    color: colors.textSecondary,
-    padding: '5px 16px',
-    fontSize: '11px',
-    fontStyle: 'italic',
-    borderBottom: `1px solid ${colors.borderColor}`,
-  },
-
-  // ── Field rows ───────────────────────────────────────────────────
   fieldRow: {
     padding: '10px 16px',
     borderBottom: `1px solid ${colors.borderColor}`,
@@ -100,21 +118,11 @@ const s = {
     fontWeight: '400',
     fontStyle: 'italic',
   },
-
-  // ── Auth status ──────────────────────────────────────────────────
   authRow: {
     display: 'flex',
     alignItems: 'center',
     gap: '7px',
   },
-  authDot: {
-    width: '9px',
-    height: '9px',
-    borderRadius: '50%',
-    flexShrink: 0,
-  },
-
-  // ── Intent tags ──────────────────────────────────────────────────
   tagWrap: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -130,20 +138,10 @@ const s = {
     fontWeight: '600',
     border: `1px solid #b8d4f5`,
   },
-
-  // ── Insights ─────────────────────────────────────────────────────
   insightsBox: {
     padding: '10px 16px',
     borderBottom: `1px solid ${colors.borderColor}`,
     background: colors.sectionBg,
-  },
-  insightTitle: {
-    fontSize: '11px',
-    color: colors.textLabel,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: '0.4px',
-    marginBottom: '8px',
   },
   sentimentLine: {
     fontSize: '11px',
@@ -164,8 +162,6 @@ const s = {
     borderRadius: '50%',
     flexShrink: 0,
   },
-
-  // ── Summary ───────────────────────────────────────────────────────
   summaryBox: {
     padding: '10px 16px',
     borderBottom: `1px solid ${colors.borderColor}`,
@@ -189,23 +185,6 @@ const s = {
     minHeight: '90px',
     fontSize: '13px',
   },
-  summaryTextarea: {
-    width: '100%',
-    boxSizing: 'border-box',
-    color: colors.textPrimary,
-    lineHeight: '1.6',
-    background: colors.white,
-    border: `2px solid ${colors.sapBlue}`,
-    borderRadius: '4px',
-    padding: '10px 12px',
-    minHeight: '90px',
-    fontSize: '13px',
-    fontFamily: 'inherit',
-    resize: 'vertical',
-    outline: 'none',
-  },
-
-  // ── Structured summary ────────────────────────────────────────────
   summaryField: {
     marginBottom: '8px',
   },
@@ -222,44 +201,15 @@ const s = {
     lineHeight: '1.5',
     fontSize: '13px',
   },
-
-  // ── Buttons ───────────────────────────────────────────────────────
-  btnRow: {
-    display: 'flex',
-    gap: '10px',
-    padding: '12px 16px',
+  statusRow: {
+    padding: '10px 16px',
     borderTop: `1px solid ${colors.borderColor}`,
     background: colors.sectionBg,
     flexShrink: 0,
+    minHeight: '42px',
+    display: 'flex',
+    alignItems: 'center',
   },
-  btnEdit: {
-    flex: 1,
-    padding: '8px 0',
-    background: colors.white,
-    color: colors.navyHeader,
-    border: `1px solid ${colors.navyHeader}`,
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '600',
-    fontFamily: 'inherit',
-    transition: 'background 0.15s',
-  },
-  btnSubmit: {
-    flex: 2,
-    padding: '8px 0',
-    background: colors.sapBlue,
-    color: colors.white,
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '600',
-    fontFamily: 'inherit',
-    transition: 'background 0.15s',
-  },
-
-  // ── Two-column field rows ─────────────────────────────────────────
   fieldRowDouble: {
     padding: '10px 16px',
     borderBottom: `1px solid ${colors.borderColor}`,
@@ -307,13 +257,38 @@ const SUMMARY_LABELS = {
 };
 const SUMMARY_DISPLAY_KEYS = ['situation', 'action', 'resolution', 'customer_satisfaction'];
 
-// Regex patterns for each key — customer_satisfaction may appear as "customer satisfaction" (space) in AI output
 const SUMMARY_KEY_PATTERNS = {
   situation: 'situation',
   action: 'action',
   resolution: 'resolution',
   customer_satisfaction: 'customer[_ ]satisfaction',
 };
+
+function parseEmbeddedProse(text) {
+  if (!text) return null;
+  const cleaned = text.replace(/^[A-Z]\s+/, '');
+  const labels = [
+    { key: 'resolution', re: /\bresolution\b/i },
+    { key: 'customer_satisfaction', re: /\bcustomer\s+satisfaction\b/i },
+    { key: 'situation', re: /\bsituation\b/i },
+    { key: 'action', re: /\baction\b/i },
+  ];
+  const positions = [];
+  for (const label of labels) {
+    const m = label.re.exec(cleaned);
+    if (m) positions.push({ key: label.key, start: m.index, end: m.index + m[0].length });
+  }
+  if (positions.length < 2) return null;
+  positions.sort((a, b) => a.start - b.start);
+  const result = {};
+  for (let i = 0; i < positions.length; i++) {
+    const { key, end } = positions[i];
+    const nextStart = positions[i + 1]?.start ?? cleaned.length;
+    const value = cleaned.slice(end, nextStart).trim().replace(/^[:\s.,]+/, '').replace(/[.,\s]+$/, '');
+    if (value) result[key] = value;
+  }
+  return Object.keys(result).length >= 2 ? result : null;
+}
 
 function parseSummaryFields(text) {
   if (!text) return null;
@@ -330,45 +305,20 @@ function parseSummaryFields(text) {
     const m = text.match(pattern);
     if (m) { result[key] = m[1].trim(); matched = true; }
   }
-  return matched ? result : null;
-}
-
-function AutoTextarea({ value, onChange }) {
-  const ref = React.useRef(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    ref.current.style.height = 'auto';
-    ref.current.style.height = ref.current.scrollHeight + 'px';
-  }, [value]);
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={onChange}
-      rows={1}
-      style={{
-        width: '100%',
-        boxSizing: 'border-box',
-        color: colors.textPrimary,
-        lineHeight: '1.6',
-        background: colors.white,
-        border: `1px solid ${colors.sapBlue}`,
-        borderRadius: '3px',
-        padding: '4px 6px',
-        fontSize: '13px',
-        fontFamily: 'inherit',
-        outline: 'none',
-        overflow: 'hidden',
-        resize: 'none',
-        minHeight: '24px',
-      }}
-    />
-  );
+  if (!matched) return null;
+  const embedded = parseEmbeddedProse(result.customer_satisfaction);
+  if (embedded) {
+    const firstLabel = result.customer_satisfaction?.search(/\b(situation|action|resolution)\b/i) ?? -1;
+    if (firstLabel !== -1) {
+      result.customer_satisfaction = result.customer_satisfaction.slice(0, firstLabel).trim().replace(/[.,\s]+$/, '');
+    }
+    Object.assign(result, embedded);
+  }
+  return result;
 }
 
 function CopyableValue({ value, placeholder }) {
   const [copied, setCopied] = useState(false);
-
   const handleCopy = () => {
     if (!value) return;
     navigator.clipboard.writeText(value).then(() => {
@@ -376,9 +326,7 @@ function CopyableValue({ value, placeholder }) {
       setTimeout(() => setCopied(false), 1500);
     });
   };
-
   if (!value) return <span style={{ color: colors.textSecondary, fontWeight: '400', fontStyle: 'italic' }}>{placeholder || '—'}</span>;
-
   return (
     <span
       onClick={handleCopy}
@@ -398,10 +346,8 @@ function CopyableValue({ value, placeholder }) {
   );
 }
 
-// Alias so the existing <StatedReasonValue> JSX is untouched
-const StatedReasonValue = ({ value }) => <CopyableValue value={value} />;
+const StatedReasonValue = ({ value }) => <CopyableValue value={value} placeholder="Caller's reason to call" />;
 
-// Copy-on-click for values inside the dark navy header (white text styling)
 function CopyableHeaderMeta({ value }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -434,24 +380,16 @@ function CopyableHeaderMeta({ value }) {
 }
 
 const SAICPanel = ({ task: taskProp }) => {
-  // Resolve task — use Flex-injected prop when available, otherwise fall back
-  // to the Flex Redux store. Panel1.Content doesn't always inject the task prop.
-  const [task, setTask] = useState(() => taskProp || getFlexTask());
+  // In SAP UI5 there is no Twilio Flex store — build task from window.ISTHA_AGENT_CONFIG.
+  // taskProp is accepted for testing/embedding flexibility.
+  const [task] = useState(() => {
+    if (taskProp) return taskProp;
+    return buildTaskFromConfig(getAgentConfig());
+  });
 
-  useEffect(() => {
-    if (taskProp) {
-      setTask(taskProp);
-      return;
-    }
-    setTask(getFlexTask());
-    try {
-      return Manager.getInstance().store.subscribe(() => setTask(getFlexTask()));
-    } catch { return undefined; }
-  }, [taskProp]);
+  const { preCall: wsPreCall, sentiment, postCall, sendMessage, transferSummary } = useAgentAssistWebSocket(task);
 
-  const { preCall: wsPreCall, sentiment, postCall } = useAgentAssistWebSocket(task);
-
-  // Cache last known preCall so fields stay visible after the task is removed (post-call)
+  // Cache last known preCall so fields stay visible after the call ends
   const [cachedPreCall, setCachedPreCall] = useState(null);
   useEffect(() => {
     if (wsPreCall) setCachedPreCall(wsPreCall);
@@ -459,122 +397,134 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const preCall = wsPreCall || cachedPreCall;
 
-  const [editing, setEditing] = useState(false);
-  const [editFields, setEditFields] = useState({});
   const [summary, setSummary] = useState('');
-  const [summaryEdited, setSummaryEdited] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [originalAiSummary, setOriginalAiSummary] = useState('');
+  const hasSubmittedRef = useRef(false);
+  const callEndedRef = useRef(false);
+
+  // Stopwatch: counts seconds this tab is active during the call.
+  const tabFocusStartRef = useRef(document.visibilityState === 'visible' ? Date.now() : null);
+  const tabFocusSecondsRef = useRef(0);
+  const windowBlurredRef = useRef(false);
 
   const taskSid = task?.taskSid || task?.sid || null;
 
-  // Populate summary from postCall when it arrives, unless user already edited it
   useEffect(() => {
-    if (postCall?.summary && !summaryEdited) {
-      setSummary(postCall.summary);
-    }
-  }, [postCall?.summary, summaryEdited]);
+    if (!postCall?.summary) return;
+    setSummary(postCall.summary);
+    setOriginalAiSummary((prev) => prev || postCall.summary);
+  }, [postCall?.summary]);
+
+  // Tab active-time tracking
+  useEffect(() => {
+    const onBlur = () => { windowBlurredRef.current = true; };
+    const onFocus = () => { windowBlurredRef.current = false; };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        if (!windowBlurredRef.current && tabFocusStartRef.current !== null) {
+          tabFocusSecondsRef.current += (Date.now() - tabFocusStartRef.current) / 1000;
+          tabFocusStartRef.current = null;
+        }
+      } else {
+        tabFocusStartRef.current = Date.now();
+      }
+    };
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   // Reset on new task
   useEffect(() => {
     setSummary('');
-    setSummaryEdited(false);
-    setEditing(false);
     setSubmitted(false);
+    setOriginalAiSummary('');
+    hasSubmittedRef.current = false;
+    callEndedRef.current = false;
     setCachedPreCall(null);
+    tabFocusSecondsRef.current = 0;
+    tabFocusStartRef.current = document.visibilityState === 'visible' ? Date.now() : null;
   }, [taskSid]);
 
-  // Direct task-attribute fallbacks so pre-call section populates even when
-  // the WebSocket hasn't delivered a pre_call_summary message yet.
+  // Derive call context — prefer live WebSocket data, fall back to initial config
+  const cfg = getAgentConfig();
   const attrs = task?.attributes || {};
 
-  const callerId =
-    preCall?.callersPhoneNumber ||
-    attrs.from ||
-    attrs.caller ||
-    null;
+  const callSid = attrs.callSid || attrs.call_sid || cfg.callSid || null;
+  const agentEmail = cfg.agentEmail || null;
+  const sentimentScore = sentiment?.sentimentScore ?? null;
 
-  const accountNumber =
-    preCall?.accountNumber ||
-    attrs.accountNumber ||
-    attrs.account_number ||
-    attrs.AccountNumber ||
-    null;
+  const callerId = preCall?.callersPhoneNumber || attrs.from || cfg.from || null;
+  const accountNumber = preCall?.accountNumber || attrs.accountNumber || cfg.accountNumber || null;
+  const accountName = preCall?.accountName || attrs.accountName || cfg.accountName || null;
 
-  const callerName = preCall?.callerName || attrs.callerName || attrs.name || null;
-  const accountName = preCall?.accountName || attrs.accountName || null;
-
-  const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
+  const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || cfg.authenticationStatus || null;
   const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified' || authStatus === 'true';
-  const authDotColor = authStatus
-    ? (isVerified ? colors.authGreen : colors.sentimentRed)
-    : '#cccccc';
-  const authTextColor = authStatus
-    ? (isVerified ? colors.authGreen : colors.sentimentRed)
-    : colors.textSecondary;
-  const authLabel = authStatus
-    ? (isVerified ? 'Authenticated' : 'Not Authenticated')
-    : null;
+  const authTextColor = authStatus ? (isVerified ? colors.authGreen : colors.sentimentRed) : colors.textSecondary;
+  const authLabel = authStatus ? (isVerified ? 'Authenticated' : 'Not Authenticated') : null;
 
-  const intentVal =
-    preCall?.lastOpenIntent ||
-    attrs.lastOpenIntent ||
-    attrs.intentIdentified ||
-    null;
+  const intentVal = preCall?.lastOpenIntent || attrs.lastOpenIntent || cfg.lastOpenIntent || null;
   const intents = intentVal ? [intentVal] : [];
 
-  const statedReason = preCall?.statedReason || attrs.statedReason || null;
-  const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || null;
+  const statedReason = preCall?.statedReason || attrs.statedReason || cfg.statedReason || null;
+  const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || cfg.IVRPathSummary || null;
 
-  // Pre-call sentiment — static from IVR handoff, shown in pre-call section
-  const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || null;
-
-  // Live sentiment — dynamic, updated during the call, shown in post-call section
-  const sentimentLabel = sentiment?.sentimentLabel || preCallSentiment || null;
+  const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || cfg.sentimentAnalysis || null;
+  const sentimentLabel = sentiment?.sentimentLabel || null;
   const sentimentColor = getSentimentColor(sentimentLabel);
 
   const postCallDuration = formatDuration(postCall?.callDurationSeconds);
 
-  const handleEnterEdit = () => {
-    const parsed = parseSummaryFields(summary) || {};
-    setEditFields({
-      situation: parsed.situation || '',
-      action: parsed.action || '',
-      resolution: parsed.resolution || '',
-      customer_satisfaction: parsed.customer_satisfaction || '',
-    });
-    setEditing(true);
+  const getTabFocusSeconds = () => {
+    const live = tabFocusStartRef.current !== null ? (Date.now() - tabFocusStartRef.current) / 1000 : 0;
+    return Math.round(tabFocusSecondsRef.current + live);
   };
 
-  const handleCancelEdit = () => {
-    setEditing(false);
-    setEditFields({});
-  };
+  function buildSummaryPayload() {
+    return {
+      type: 'agent_summary_submit',
+      callSid,
+      taskSid,
+      agentEmail,
+      submittedAt: new Date().toISOString(),
+      callersPhoneNumber: callerId,
+      authenticationStatus: isVerified ? 'AUTHENTICATED' : 'UNAUTHENTICATED',
+      lastOpenIntent: intentVal,
+      IVRPathSummary: ivrPath,
+      statedReason,
+      preCallSentiment,
+      accountNumber,
+      sentimentLabel,
+      sentimentScore,
+      callDurationSeconds: postCall?.callDurationSeconds ?? null,
+      overallSentiment: postCall?.overallSentiment || sentimentLabel,
+      aiSummary: originalAiSummary,
+      agentAssistTabActiveDurationInSecs: getTabFocusSeconds(),
+    };
+  }
 
-  const handleSave = () => {
-    const rebuilt = SUMMARY_KEYS
-      .filter((k) => editFields[k])
-      .map((k) => `${k}\n${editFields[k]}`)
-      .join('\n');
-    setSummary(rebuilt || summary);
-    setSummaryEdited(true);
-    setEditFields({});
-    setEditing(false);
-  };
+  const buildPayloadRef = useRef(buildSummaryPayload);
+  buildPayloadRef.current = buildSummaryPayload;
 
-  const handleSubmit = () => {
-    if (editing) {
-      const rebuilt = SUMMARY_KEYS
-        .filter((k) => editFields[k])
-        .map((k) => `${k}\n${editFields[k]}`)
-        .join('\n');
-      setSummary(rebuilt || summary);
-      setSummaryEdited(true);
-      setEditFields({});
+  // Auto-submit when postCall arrives — that signals the call has ended in the backend.
+  // (No Twilio task.status === 'wrapping' available in SAP UI5.)
+  useEffect(() => {
+    if (postCall) callEndedRef.current = true;
+    if (!callEndedRef.current || !originalAiSummary || hasSubmittedRef.current) return;
+    const payload = buildPayloadRef.current();
+    if (!payload.callSid || !payload.taskSid) {
+      console.error('[AA wrapup] missing callSid or taskSid — not submitting');
+      return;
     }
-    setEditing(false);
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
-  };
+    const sent = sendMessage(payload);
+    if (sent) { hasSubmittedRef.current = true; setSubmitted(true); }
+  }, [postCall, originalAiSummary, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Placeholder = ({ text }) => (
     <span style={s.fieldPlaceholder}>{text || '—'}</span>
@@ -594,13 +544,13 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColLeft}>
           <div style={s.fieldLabel}>Caller ID</div>
           <div style={s.fieldValue}>
-            <CopyableValue value={callerId} placeholder="Waiting..." />
+            <CopyableValue value={callerId} placeholder="Incoming phone number" />
           </div>
         </div>
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Account Number</div>
           <div style={s.fieldValue}>
-            <CopyableValue value={accountNumber} />
+            <CopyableValue value={accountNumber} placeholder="Caller's account number" />
           </div>
         </div>
       </div>
@@ -610,9 +560,8 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColLeft}>
           <div style={s.fieldLabel}>Authentication Status</div>
           <div style={{ ...s.fieldValue, ...s.authRow }}>
-            <span style={{ ...s.authDot, background: authDotColor }} />
             <span style={{ color: authTextColor, fontWeight: '600' }}>
-              {authLabel || <Placeholder text="—" />}
+              {authLabel || <Placeholder text="Awaiting caller verification" />}
             </span>
           </div>
         </div>
@@ -627,7 +576,7 @@ const SAICPanel = ({ task: taskProp }) => {
                 </span>
               </>
             ) : (
-              <Placeholder text="—" />
+              <Placeholder text="Detected during IVR interaction" />
             )}
           </div>
         </div>
@@ -641,20 +590,39 @@ const SAICPanel = ({ task: taskProp }) => {
               ? intents.map((intent) => (
                   <span key={intent} style={s.tag}>{intent}</span>
                 ))
-              : <Placeholder text="—" />
+              : <Placeholder text="Caller intent to call" />
             }
           </div>
         </div>
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Stated Reason</div>
-          <StatedReasonValue value={statedReason} />
+          {transferSummary ? (
+            <div>
+              <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>Previous Agent</div>
+              {transferSummary.sections ? (
+                Object.entries(transferSummary.sections).map(([key, val]) => (
+                  <div key={key} style={{ marginBottom: '4px' }}>
+                    <div style={{ fontSize: '10px', color: colors.textLabel, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '1px' }}>{key}</div>
+                    <div style={{ color: colors.textPrimary, fontSize: '12px', lineHeight: '1.4' }}>{val}</div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: colors.textPrimary, fontWeight: '500', lineHeight: '1.4', marginBottom: '6px', fontSize: '12px' }}>{transferSummary.text}</div>
+              )}
+              <div style={{ borderTop: `1px solid ${colors.borderColor}`, margin: '6px 0' }} />
+              <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '3px' }}>Stated Reason</div>
+              <StatedReasonValue value={statedReason} />
+            </div>
+          ) : (
+            <StatedReasonValue value={statedReason} />
+          )}
         </div>
       </div>
 
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>IVR Path</div>
         <div style={s.fieldValue}>
-          {ivrPath || <Placeholder text="—" />}
+          {ivrPath || <Placeholder text="Menu path before reaching you" />}
         </div>
       </div>
 
@@ -667,42 +635,47 @@ const SAICPanel = ({ task: taskProp }) => {
             : (postCallDuration || '')}
         </span>
       </div>
-      <div style={s.sectionSubtitle}>Pre-populated information from an IVR handoff</div>
 
       {/* Real-time Insights */}
       <div style={s.insightsBox}>
-        <div style={s.insightTitle}>Real-time Insights</div>
-        <div style={s.sentimentLine}>Sentiment Analysis</div>
-        <div style={s.sentimentValue}>
-          {sentimentLabel ? (
-            <>
-              <span style={{ ...s.sentimentDot, background: sentimentColor }} />
-              <span style={{ color: sentimentColor, fontWeight: '700', fontSize: '13px' }}>
-                {normalizeSentiment(sentimentLabel)}
-              </span>
-            </>
-          ) : (
-            <Placeholder text="Waiting for live data..." />
-          )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+          <div style={s.fieldColLeft}>
+            <div style={s.sentimentLine}>Sentiment Real-time</div>
+            <div style={s.sentimentValue}>
+              {sentimentLabel ? (
+                <>
+                  <span style={{ ...s.sentimentDot, background: sentimentColor }} />
+                  <span style={{ color: sentimentColor, fontWeight: '700', fontSize: '13px' }}>
+                    {normalizeSentiment(sentimentLabel)}
+                  </span>
+                </>
+              ) : (
+                <Placeholder text="Real time update sentiment" />
+              )}
+            </div>
+          </div>
+          <div style={s.fieldColRight}>
+            <div style={s.sentimentLine}>Overall Sentiment</div>
+            <div style={s.sentimentValue}>
+              {postCall?.overallSentiment ? (
+                <>
+                  <span style={{ ...s.sentimentDot, background: getSentimentColor(postCall.overallSentiment) }} />
+                  <span style={{ color: getSentimentColor(postCall.overallSentiment), fontWeight: '700', fontSize: '13px' }}>
+                    {normalizeSentiment(postCall.overallSentiment)}
+                  </span>
+                </>
+              ) : (
+                <Placeholder text="Overall sentiment when call ends" />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* AI Summary */}
+      {/* AI Summary — read-only, auto-submitted when postCall arrives */}
       <div style={s.summaryBox}>
         <div style={s.summaryLabel}>Generative AI Session Summarization</div>
-        {editing ? (
-          <div style={{ ...s.summaryText, padding: '10px 12px', background: colors.white, border: `2px solid ${colors.sapBlue}` }}>
-            {SUMMARY_DISPLAY_KEYS.map((k, idx) => (
-              <div key={k} style={{ ...s.summaryField, marginBottom: '10px' }}>
-                <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
-                <AutoTextarea
-                  value={editFields[k] || ''}
-                  onChange={(e) => { setEditFields((prev) => ({ ...prev, [k]: e.target.value })); setSummaryEdited(true); }}
-                />
-              </div>
-            ))}
-          </div>
-        ) : (() => {
+        {(() => {
           const parsed = parseSummaryFields(summary);
           if (parsed) {
             return (
@@ -711,7 +684,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   <div key={k} style={s.summaryField}>
                     <div style={s.summaryFieldLabel}>{SUMMARY_LABELS[k]}</div>
                     <div style={parsed[k] ? s.summaryFieldValue : { ...s.summaryFieldValue, color: colors.textSecondary, fontStyle: 'italic' }}>
-                      {parsed[k] || '—'}
+                      {parsed[k] || 'Not captured'}
                     </div>
                   </div>
                 ))}
@@ -720,35 +693,22 @@ const SAICPanel = ({ task: taskProp }) => {
           }
           return (
             <div style={{ ...s.summaryText, color: summary ? colors.textPrimary : colors.textSecondary }}>
-              {summary || 'Waiting for session summary...'}
+              {summary || 'AI summary auto-generates when call ends.'}
             </div>
           );
         })()}
       </div>
 
-      {/* Action buttons */}
-      <div style={s.btnRow}>
-        <button
-          style={s.btnEdit}
-          onClick={editing ? handleCancelEdit : handleEnterEdit}
-        >
-          {editing ? 'Cancel' : 'Edit'}
-        </button>
-        {editing ? (
-          <button style={s.btnSubmit} onClick={handleSave}>
-            Save
-          </button>
+      {/* Submission status */}
+      <div style={s.statusRow}>
+        {submitted ? (
+          <span style={{ color: colors.authGreen, fontWeight: '700', fontSize: '13px' }}>
+            Submitted to SAP
+          </span>
         ) : (
-          <button
-            style={{
-              ...s.btnSubmit,
-              background: submitted ? '#107e3e' : colors.sapBlue,
-            }}
-            onClick={handleSubmit}
-            disabled={submitted}
-          >
-            {submitted ? 'Submitted!' : 'Submit to SAP'}
-          </button>
+          <span style={{ color: colors.textSecondary, fontSize: '12px', fontStyle: 'italic' }}>
+            {originalAiSummary ? '' : ''}
+          </span>
         )}
       </div>
     </div>

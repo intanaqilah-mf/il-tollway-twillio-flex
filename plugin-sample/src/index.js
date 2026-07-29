@@ -1,5 +1,5 @@
-import * as FlexPlugin from '@twilio/flex-plugin';
+import React from 'react';
+import ReactDOM from 'react-dom';
+import App from './IsthaAgentAssistPlugin';
 
-import IsthaAgentAssistPlugin from './IsthaAgentAssistPlugin';
-
-FlexPlugin.loadPlugin(IsthaAgentAssistPlugin);
+ReactDOM.render(<App />, document.getElementById('root'));
