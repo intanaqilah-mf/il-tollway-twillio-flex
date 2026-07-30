@@ -3,9 +3,14 @@ import { Manager, Actions } from '@twilio/flex-ui';
 import React from 'react';
 import SAICPanel from './components/SAICPanel/SAICPanel';
 import LiveTranscript from './components/LiveTranscript/LiveTranscript';
+import SupervisorJoinModal, { openSupervisorModal } from './components/SupervisorJoin/SupervisorJoinModal';
+import AddSupervisorButton from './components/SupervisorJoin/AddSupervisorButton';
 
 const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
 
+// SupervisorJoinModal uses position:fixed so it renders over the whole page
+// regardless of where in the tree it lives. Placing it here keeps it
+// co-located with the panel it relates to.
 const RightPanel = () => (
   <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
     {/* 2 parts — pre/post call summary */}
@@ -16,6 +21,8 @@ const RightPanel = () => (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <LiveTranscript />
     </div>
+    {/* Modal mounts here but renders via position:fixed, so placement is irrelevant */}
+    <SupervisorJoinModal />
   </div>
 );
 
@@ -150,6 +157,32 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     );
 
     console.log('[IsthaAgentAssistPlugin] RightPanel registered in Panel2');
+
+    // ── Supervisor join ───────────────────────────────────────────────────────
+    //
+    // Injects the "Add Supervisor" button into Flex's native call canvas so it
+    // appears alongside the built-in call controls. The button opens the
+    // SupervisorJoinModal which shows a live list of supervisor workers.
+    flex.CallCanvas.Content.add(
+      <AddSupervisorButton key="add-supervisor-btn" />,
+      { sortOrder: 100 }
+    );
+
+    // Override the native warm-transfer action when it's triggered WITHOUT a
+    // pre-selected destination (i.e. the user clicked the "+" add-participant
+    // button rather than picking someone from the transfer directory).
+    // When a destination IS already set (e.g. directory transfer), we let the
+    // original action proceed unchanged so regular transfers still work.
+    flex.Actions.replaceAction('StartExternalWarmTransfer', (payload, original) => {
+      if (!payload.to && !payload.contact && !payload.targetSid) {
+        // No destination yet — this came from the bare "+" button; show our modal
+        openSupervisorModal(payload.task);
+        return Promise.resolve();
+      }
+      // Directory-initiated transfer — let Flex handle it normally
+      return original(payload);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Remove the Complete button from the UI so agents cannot manually complete tasks
     try { flex.TaskListButtons.Content.remove('wrapup'); } catch {}
