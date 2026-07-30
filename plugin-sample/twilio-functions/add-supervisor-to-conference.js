@@ -37,10 +37,10 @@ exports.handler = function (context, event, callback) {
     return callback(null, response);
   }
 
-  if (mode === 'coach' && !agentCallSid) {
-    console.error('[add-supervisor] coaching mode missing agentCallSid');
+  if ((mode === 'coach' || mode === 'takeover') && !agentCallSid) {
+    console.error('[add-supervisor] coach/takeover mode missing agentCallSid');
     response.setStatusCode(400);
-    response.setBody(JSON.stringify({ error: 'agentCallSid is required for coaching mode' }));
+    response.setBody(JSON.stringify({ error: 'agentCallSid is required for coach and takeover modes' }));
     return callback(null, response);
   }
 
@@ -58,6 +58,7 @@ exports.handler = function (context, event, callback) {
     participantConfig.coaching = true;
     participantConfig.callSidToCoach = agentCallSid;
   }
+  // 'full' and 'takeover' both join as regular full participant
 
   console.log('[add-supervisor] creating participant with config:', JSON.stringify(participantConfig));
   console.log('[add-supervisor] targeting conference:', conferenceSid);
@@ -65,8 +66,22 @@ exports.handler = function (context, event, callback) {
   client.conferences(conferenceSid)
     .participants
     .create(participantConfig)
-    .then(participant => {
-      console.log('[add-supervisor] success — participantCallSid:', participant.callSid);
+    .then(async participant => {
+      console.log('[add-supervisor] supervisor joined — participantCallSid:', participant.callSid);
+
+      if (mode === 'takeover') {
+        // Remove the original agent from the conference so the supervisor takes over.
+        // We add the supervisor first so the conference stays alive when the agent leaves.
+        console.log('[add-supervisor] takeover — removing agent callSid:', agentCallSid);
+        try {
+          await client.conferences(conferenceSid).participants(agentCallSid).remove();
+          console.log('[add-supervisor] takeover — agent removed successfully');
+        } catch (kickErr) {
+          // Log but don't fail the whole request — supervisor is already in
+          console.error('[add-supervisor] takeover — failed to remove agent:', kickErr.message);
+        }
+      }
+
       response.setStatusCode(200);
       response.setBody(JSON.stringify({ success: true, participantCallSid: participant.callSid }));
       callback(null, response);

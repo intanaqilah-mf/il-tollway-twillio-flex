@@ -50,6 +50,16 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       [data-testid="wrapup-complete-task-button"] {
         display: none !important;
       }
+      /* Hide the native Flex transfer button in the active call canvas.
+         Flex 2.x renders it with data-testid and aria-label — target both. */
+      [data-testid="transfer-button"],
+      [data-testid="call-canvas-transfer-button"],
+      button[aria-label="Transfer"],
+      button[aria-label="Open transfer directory"],
+      button[title="Transfer"],
+      button[title="Open transfer directory"] {
+        display: none !important;
+      }
     `;
     document.head.appendChild(style);
 

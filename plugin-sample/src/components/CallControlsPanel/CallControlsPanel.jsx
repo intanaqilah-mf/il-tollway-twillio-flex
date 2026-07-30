@@ -50,14 +50,6 @@ const PlayIcon = ({ size = 18 }) => (
   </svg>
 );
 
-const TransferIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="17 1 21 5 17 9"/>
-    <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-    <polyline points="7 23 3 19 7 15"/>
-    <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-  </svg>
-);
 
 const CtrlBtn = ({ onClick, disabled, active, icon, label }) => (
   <button
@@ -129,13 +121,6 @@ const CallControlsPanel = () => {
     }
   };
 
-  const handleTransfer = () => {
-    if (!task) return;
-    try { Actions.invokeAction('ShowDirectory', { task }); } catch (e) {
-      console.error('[CallControls] ShowDirectory failed:', e);
-    }
-  };
-
   return (
     <div style={{
       display: 'flex',
@@ -173,13 +158,6 @@ const CallControlsPanel = () => {
           active={isOnHold}
           icon={isOnHold ? <PlayIcon /> : <PauseIcon />}
           label={isOnHold ? 'Resume' : 'Hold'}
-        />
-        <CtrlBtn
-          onClick={handleTransfer}
-          disabled={!hasCall}
-          active={false}
-          icon={<TransferIcon />}
-          label="Transfer"
         />
       </div>
     </div>

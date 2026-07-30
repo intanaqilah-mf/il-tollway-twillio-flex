@@ -29,6 +29,11 @@ const MODES = [
     label: 'Coaching',
     desc: 'Only the agent can hear the supervisor — customer cannot',
   },
+  {
+    value: 'takeover',
+    label: 'Takeover',
+    desc: 'Supervisor joins and agent is removed from the call',
+  },
 ];
 
 // Flex 2.x stores worker data in different Redux paths depending on the user's role.
@@ -149,7 +154,8 @@ const SupervisorJoinModal = () => {
       const params = new URLSearchParams({ conferenceSid, to: selected.contactUri, mode });
       console.log('[SupervisorJoin] POST params:', params.toString());
 
-      if (mode === 'coach') {
+      // Coach and takeover both need the agent's call SID
+      if (mode === 'coach' || mode === 'takeover') {
         const parts = task.conference?.participants || {};
         const safeParts = Object.fromEntries(
           Object.entries(parts).map(([k, v]) => [k, { callSid: v?.callSid, participantType: v?.participantType }])
