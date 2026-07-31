@@ -43,6 +43,17 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       [data-testid="wrapup-complete-task-button"] {
         display: none !important;
       }
+      /* Hide the native Flex transfer button — target by every known selector
+         since the exact attribute varies across Flex versions */
+      [data-testid="task-transfer-button"],
+      [data-testid="transfer-button"],
+      [data-testid="call-canvas-transfer-button"],
+      button[aria-label="Transfer"],
+      button[aria-label="Open transfer directory"],
+      button[title="Transfer"],
+      button[title="Open transfer directory"] {
+        display: none !important;
+      }
     `;
     document.head.appendChild(style);
 
