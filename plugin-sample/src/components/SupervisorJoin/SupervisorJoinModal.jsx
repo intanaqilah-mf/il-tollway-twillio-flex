@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Manager, Actions } from '@twilio/flex-ui';
+import { sendToTask } from '../../hooks/useAgentAssistWebSocket';
 
 const colors = {
   navy: '#1a3352',
@@ -192,6 +193,19 @@ const SupervisorJoinModal = () => {
       if (!res.ok) {
         throw new Error(`Function returned ${res.status}: ${responseText}`);
       }
+
+      // Tell the relay which call SID belongs to the supervisor so it can route
+      // their Voice Intelligence transcription callbacks as "supervisor" speech.
+      try {
+        const body = JSON.parse(responseText);
+        if (body.participantCallSid && task?.taskSid) {
+          sendToTask(task.taskSid, {
+            type: 'supervisor_joined',
+            supervisorCallSid: body.participantCallSid,
+          });
+          console.log('[SupervisorJoin] notified relay of supervisorCallSid:', body.participantCallSid);
+        }
+      } catch {}
 
       setStatus('done');
       setTimeout(handleClose, 1500);

@@ -82,6 +82,23 @@ exports.handler = function (context, event, callback) {
         }
       }
 
+      // Start live transcription on the supervisor's call leg (full/coach only).
+      // Transcription events hit TRANSCRIPT_WEBHOOK_URL which forwards them to the
+      // relay so supervisor speech surfaces as "Supervisor" in the transcript panel.
+      // Listen-only supervisors are muted so transcription is unnecessary.
+      if ((mode === 'full' || mode === 'coach') && context.TRANSCRIPT_WEBHOOK_URL) {
+        try {
+          await client.calls(participant.callSid).transcriptions.create({
+            statusCallback: context.TRANSCRIPT_WEBHOOK_URL,
+            statusCallbackMethod: 'POST',
+          });
+          console.log('[add-supervisor] live transcription started on supervisor call');
+        } catch (transcriptErr) {
+          // Non-fatal — supervisor is already in the call; transcription is best-effort
+          console.warn('[add-supervisor] could not start transcription:', transcriptErr.message);
+        }
+      }
+
       response.setStatusCode(200);
       response.setBody(JSON.stringify({ success: true, participantCallSid: participant.callSid }));
       callback(null, response);

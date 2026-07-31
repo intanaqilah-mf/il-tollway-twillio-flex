@@ -235,6 +235,12 @@ function sendMessageToRelay(taskSid, payload) {
   }
 }
 
+// Allows non-hook contexts (e.g. SupervisorJoinModal) to send a message on the
+// already-open relay WebSocket for a given task SID without subscribing to state.
+export function sendToTask(taskSid, payload) {
+  return sendMessageToRelay(taskSid, payload);
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useAgentAssistWebSocket(task) {
   // Use stable primitive SID — NOT the task object — as the dependency key.

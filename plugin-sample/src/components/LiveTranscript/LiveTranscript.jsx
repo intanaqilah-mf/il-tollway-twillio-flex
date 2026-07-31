@@ -23,8 +23,10 @@ const colors = {
   textSecondary: '#6a6d70',
   agentLabel: '#0070b9',
   customerLabel: '#32363a',
+  supervisorLabel: '#107869',
   bubbleAgent: '#e8f2ff',
   bubbleCustomer: '#ffffff',
+  bubbleSupervisor: '#e8f8ef',
   borderBubble: '#e0e0e0',
   callEndedBg: '#eef0f2',
   callEndedText: '#6a6d70',
@@ -101,6 +103,11 @@ const s = {
     background: colors.bubbleCustomer,
     alignSelf: 'flex-start',
   },
+  supervisorBubble: {
+    background: colors.bubbleSupervisor,
+    alignSelf: 'flex-end',
+    borderColor: '#a3d9b8',
+  },
   speakerRow: {
     display: 'flex',
     alignItems: 'baseline',
@@ -117,6 +124,13 @@ const s = {
   speakerCustomer: {
     fontWeight: '700',
     color: colors.customerLabel,
+    fontSize: '11px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  },
+  speakerSupervisor: {
+    fontWeight: '700',
+    color: colors.supervisorLabel,
     fontSize: '11px',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
@@ -213,12 +227,14 @@ const LiveTranscript = ({ task: taskProp }) => {
   const scrollRef = useRef(null);
   const callEnded = !loading && !task;
 
-  const messages = wsTranscript.map((entry) => ({
-    id: entry.ts,
-    speaker: entry.speaker === 'agent' ? 'Agent' : 'Customer',
-    text: entry.transcript,
-    time: formatTime(entry.ts),
-  }));
+  const messages = wsTranscript.map((entry) => {
+    const raw = (entry.speaker || '').toLowerCase();
+    // 'agent' → agent lane; 'customer' → customer lane;
+    // anything else (supervisor, external, unknown) → supervisor lane
+    const speakerType = raw === 'agent' ? 'agent' : raw === 'customer' ? 'customer' : 'supervisor';
+    const speakerLabel = speakerType === 'agent' ? 'Agent' : speakerType === 'customer' ? 'Customer' : 'Supervisor';
+    return { id: entry.ts, speakerType, speaker: speakerLabel, text: entry.transcript, time: formatTime(entry.ts) };
+  });
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -273,19 +289,14 @@ const LiveTranscript = ({ task: taskProp }) => {
           </div>
         ) : (
           messages.map((msg) => {
-            const isAgent = msg.speaker === 'Agent';
+            const isAgent = msg.speakerType === 'agent';
+            const isSupervisor = msg.speakerType === 'supervisor';
+            const bubbleStyle = isAgent ? s.agentBubble : isSupervisor ? s.supervisorBubble : s.customerBubble;
+            const labelStyle = isAgent ? s.speakerAgent : isSupervisor ? s.speakerSupervisor : s.speakerCustomer;
             return (
-              <div
-                key={msg.id}
-                style={{
-                  ...s.messageBubble,
-                  ...(isAgent ? s.agentBubble : s.customerBubble),
-                }}
-              >
+              <div key={msg.id} style={{ ...s.messageBubble, ...bubbleStyle }}>
                 <div style={s.speakerRow}>
-                  <span style={isAgent ? s.speakerAgent : s.speakerCustomer}>
-                    {msg.speaker}
-                  </span>
+                  <span style={labelStyle}>{msg.speaker}</span>
                   <span style={s.timestamp}>{msg.time}</span>
                 </div>
                 <div style={s.messageText}>{msg.text}</div>
