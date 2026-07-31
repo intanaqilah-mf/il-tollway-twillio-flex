@@ -591,6 +591,7 @@ const SAICPanel = ({ task: taskProp }) => {
     return {
       type: 'agent_summary_submit',
       callSid,
+      customerCallSid: postCall?.customerCallSid || null,
       taskSid,
       agentEmail,
       submittedAt: new Date().toISOString(),

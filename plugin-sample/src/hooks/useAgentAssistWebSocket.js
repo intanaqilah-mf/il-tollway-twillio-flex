@@ -148,6 +148,7 @@ function openConnection(taskSid) {
           summary: p.summary,
           overallSentiment: p.overallSentiment,
           callDurationSeconds: p.callDurationSeconds,
+          customerCallSid: p.customerCallSid || null,
         };
         break;
       case 'transfer_summary': {
