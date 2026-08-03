@@ -517,6 +517,21 @@ const SAICPanel = ({ task: taskProp }) => {
   // the WebSocket hasn't delivered a pre_call_summary message yet.
   const attrs = task?.attributes || {};
 
+  // When the agent clicks "Place Call Now", Flex switches the panel to the outbound task
+  // which has no pre-call attributes. Look up the originating callback task from the store
+  // so pre-call fields stay populated throughout the outbound call.
+  const callbackAttrs = (() => {
+    if (attrs.type !== 'outbound' || !attrs.callbackTaskSid) return {};
+    try {
+      const tasks = Manager.getInstance().store.getState()?.flex?.worker?.tasks;
+      if (!tasks) return {};
+      for (const [, t] of tasks) {
+        if ((t.taskSid || t.sid) === attrs.callbackTaskSid) return t.attributes || {};
+      }
+    } catch {}
+    return {};
+  })();
+
   const callSid =
     attrs.callSid || attrs.call_sid || attrs.CallSid || null;
 
@@ -532,21 +547,20 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const callerId =
     preCall?.callersPhoneNumber ||
-    attrs.from ||
-    attrs.caller ||
+    attrs.from || attrs.caller ||
+    callbackAttrs.from || callbackAttrs.callback ||
     null;
 
   const accountNumber =
     preCall?.accountNumber ||
-    attrs.accountNumber ||
-    attrs.account_number ||
-    attrs.AccountNumber ||
+    attrs.accountNumber || attrs.account_number || attrs.AccountNumber ||
+    callbackAttrs.accountNumber || callbackAttrs.account_number ||
     null;
 
-  const callerName = preCall?.callerName || attrs.callerName || attrs.name || null;
-  const accountName = preCall?.accountName || attrs.accountName || null;
+  const callerName = preCall?.callerName || attrs.callerName || attrs.name || callbackAttrs.callerName || null;
+  const accountName = preCall?.accountName || attrs.accountName || callbackAttrs.accountName || null;
 
-  const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
+  const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || callbackAttrs.authenticationStatus || null;
   const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified' || authStatus === 'true';
   const authDotColor = authStatus
     ? (isVerified ? colors.authGreen : colors.sentimentRed)
@@ -560,19 +574,19 @@ const SAICPanel = ({ task: taskProp }) => {
 
   const intentVal =
     preCall?.lastOpenIntent ||
-    attrs.lastOpenIntent ||
-    attrs.intentIdentified ||
+    attrs.lastOpenIntent || attrs.intentIdentified ||
+    callbackAttrs.lastOpenIntent ||
     null;
   const intents = intentVal ? [intentVal] : [];
 
-  const statedReason = preCall?.statedReason || attrs.statedReason || null;
-  const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || null;
+  const statedReason = preCall?.statedReason || attrs.statedReason || callbackAttrs.statedReason || null;
+  const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || callbackAttrs.IVRPathSummary || null;
 
   // transferSummary arrives via WebSocket 'transfer_summary' message pushed by the relay
   // after CSR1's summary is ready. Display-only — statedReason in the payload is NOT affected.
 
   // Pre-call sentiment — static from IVR handoff, shown in pre-call section
-  const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || null;
+  const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || callbackAttrs.sentimentAnalysis || null;
 
   // Live sentiment — dynamic, updated during the call, shown in post-call section
   const sentimentLabel = sentiment?.sentimentLabel || null;
