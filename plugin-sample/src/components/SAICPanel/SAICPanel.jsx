@@ -496,17 +496,17 @@ const SAICPanel = ({ task: taskProp }) => {
     try { manager = Manager.getInstance(); } catch { return; }
     if (!manager.workerClient) return;
 
-    const handleReservationCreated = async (reservation) => {
+    const handleReservationCreated = (reservation) => {
       console.log("[AUTO ANSWER] Reservation Created");
       if (reservation.task.taskChannelUniqueName !== "voice") return;
-      try {
-        setTimeout(async () => {
+      setTimeout(async () => {
+        try {
           console.log("[AUTO ANSWER] Invoking AcceptTask");
           await Actions.invokeAction("AcceptTask", { sid: reservation.sid });
-        }, 500);
-      } catch (err) {
-        console.error("[AUTO ANSWER ERROR]", err);
-      }
+        } catch (err) {
+          console.error("[AUTO ANSWER ERROR]", err.message);
+        }
+      }, 500);
     };
 
     manager.workerClient.on("reservationCreated", handleReservationCreated);

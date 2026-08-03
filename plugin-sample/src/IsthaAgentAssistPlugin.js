@@ -3,16 +3,18 @@ import { Manager, Actions } from '@twilio/flex-ui';
 import React from 'react';
 import SAICPanel from './components/SAICPanel/SAICPanel';
 import LiveTranscript from './components/LiveTranscript/LiveTranscript';
+import { CallbackComponent } from './components/callback';
+import reducers, { namespace } from './states';
 
 const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
 
 const RightPanel = () => (
   <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-    {/* 2 parts — pre/post call summary */}
+    {/* pre/post call summary */}
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', borderRight: '1px solid #e0e0e0' }}>
       <SAICPanel />
     </div>
-    {/* 2 parts — live transcript */}
+    {/* live transcript */}
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <LiveTranscript />
     </div>
@@ -30,21 +32,64 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     const t = Manager.getInstance().user?.token;
     console.log('[AA] token type on load:', typeof t, String(t).slice(0, 15));
 
-    // Layout proportions: control panel (1/5) | SAIC (2/5) | transcript (2/5)
+    // ── Redux (must be first so CallbackContainer can connect) ──────────────
+    this.registerReducers(manager);
+
+    // ── Callback channel + UI ────────────────────────────────────────────────
+    this.registerCallbackChannel(flex, manager);
+
+    // When an outbound callback call finishes, auto-complete the originating callback task
+    flex.Actions.addListener('beforeCompleteTask', (payload) => {
+      const attrs = payload.task.attributes || {};
+      if (attrs.type === 'outbound' && attrs.callbackTaskSid) {
+        const tasks = manager.store.getState()?.flex?.worker?.tasks;
+        if (tasks) {
+          const cbTask = [...tasks.values()].find(
+            (t) => (t.taskSid || t.sid) === attrs.callbackTaskSid
+          );
+          if (cbTask) {
+            console.log('[IsthaAgentAssistPlugin] outbound done — completing callback task', attrs.callbackTaskSid);
+            setTimeout(() => {
+              Actions.invokeAction('CompleteTask', { task: cbTask }).catch((e) =>
+                console.error('[IsthaAgentAssistPlugin] CompleteTask (callback) failed:', e)
+              );
+            }, 1500);
+          }
+        }
+      }
+    });
+
+    // Update callback task attributes for reporting before the task completes
+    flex.Actions.addListener('beforeCompleteTask', (payload) => {
+      const taskType = payload.task.attributes.taskType || payload.task.attributes.type;
+      if (taskType !== 'callback') return;
+
+      const attr = payload.task.attributes;
+      console.log('[IsthaAgentAssistPlugin] beforeCompleteTask callback', attr);
+
+      const alreadyRequeued =
+        attr.taskAttribute_updateMode === 'CALLBACKREQUEUED' ||
+        attr.taskAttribute_updateMode === 'CALLBACKATTEMPTSEXCEEDED';
+
+      if (!alreadyRequeued || (attr.taskAttribute_updateMode === 'CALLBACKREQUEUED' && attr.placeCallRetry == 1)) {
+        attr.taskAttribute_updateMode = 'CALLBACKSUCCESS';
+        attr.taskAttribute_callbackCurrentAttempt = parseInt(attr.placeCallRetry, 10) + 1;
+        payload.task.setAttributes(attr);
+      }
+    });
+
+    // ── Layout & styles ──────────────────────────────────────────────────────
     const style = document.createElement('style');
     style.innerHTML = `
       .Twilio-CRMContainer {
         display: none !important;
       }
-      /* Hide the wrap-up Complete button */
       .Twilio-TaskListButtons-WrapUp,
       .Twilio-TaskCanvasHeader-EndTask,
       [data-testid="complete-task-button"],
       [data-testid="wrapup-complete-task-button"] {
         display: none !important;
       }
-      /* Hide the native Flex transfer button — target by every known selector
-         since the exact attribute varies across Flex versions */
       [data-testid="task-transfer-button"],
       [data-testid="transfer-button"],
       [data-testid="call-canvas-transfer-button"],
@@ -57,7 +102,7 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     `;
     document.head.appendChild(style);
 
-    // Panel sizing: control panel 1/5, SAIC+transcript 4/5.
+    // ── Panel sizing: Panel1 = 20%, Panel2 = 80% ────────────────────────────
     //
     // Why JS instead of CSS :has():
     //   .Twilio-CRMContainer sits several <div> levels inside Panel2's wrapper,
@@ -94,7 +139,6 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     let panel1El = null;
     let panel2El = null;
 
-    // Sentinel: returns true only when OUR max-width is already stamped.
     const isSized = () =>
       panel1El &&
       panel1El.style.getPropertyValue('max-width') === '20%' &&
@@ -117,7 +161,6 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
           const cs = window.getComputedStyle(parent);
           if (cs.display === 'flex' && cs.flexDirection !== 'column') {
             const p2 = kids.find(k => k === el || k.contains(crm));
-            // Panel1 = widest non-p2 child; skip tiny resize handles (≤ 20 px)
             const nonP2 = kids.filter(k => k !== p2);
             const p1 = nonP2.find(k => k.getBoundingClientRect().width > 20) ?? nonP2[0];
 
@@ -126,7 +169,6 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
               panel2El = p2;
               stampSizes();
 
-              // Re-apply whenever the resize lib mutates Panel1's style attribute
               const guard = new MutationObserver(() => {
                 if (!isSized()) stampSizes();
               });
@@ -142,7 +184,6 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       return false;
     };
 
-    // Flex mounts panels asynchronously — observe until they appear, then stop.
     if (!findAndApplyPanelSizing()) {
       const initObs = new MutationObserver(() => {
         if (findAndApplyPanelSizing()) initObs.disconnect();
@@ -150,9 +191,6 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       initObs.observe(document.body, { childList: true, subtree: true });
     }
 
-    // Force Panel2 to always render — in deployed Flex, Panel2 only exists in the DOM
-    // when there is an active task, so Panel2.Content.add() never mounts without this.
-    // Localhost always renders Panel2 (dev mode default), which is why it works there.
     flex.AgentDesktopView.defaultProps.showPanel2 = true;
 
     flex.AgentDesktopView.Panel2.Content.add(
@@ -162,21 +200,21 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
 
     console.log('[IsthaAgentAssistPlugin] RightPanel registered in Panel2');
 
-    // Remove the Complete button from the UI so agents cannot manually complete tasks
     try { flex.TaskListButtons.Content.remove('wrapup'); } catch {}
     try { flex.TaskCanvasHeader.Content.remove('actions'); } catch {}
 
-    // Auto-complete tasks when they enter wrap-up (triggered by either party hanging up).
-    // The 3-second delay gives SAICPanel time to submit the summary first.
+    // ── Auto-complete non-callback tasks on wrap-up ──────────────────────────
+    // Callback tasks are excluded — agents manage them via Requeue / Place Call Now.
     const autoCompleted = new Set();
     Manager.getInstance().store.subscribe(() => {
       const tasks = Manager.getInstance().store.getState()?.flex?.worker?.tasks;
       if (!tasks) return;
       for (const task of tasks.values()) {
         const sid = task.taskSid || task.sid;
-        if (task.status === 'wrapping' && !autoCompleted.has(sid)) {
+        const isCallback = task.attributes?.taskType === 'callback' || task.attributes?.type === 'callback';
+        if (task.status === 'wrapping' && !autoCompleted.has(sid) && !isCallback) {
           autoCompleted.add(sid);
-          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 7s');
+          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 10s');
           setTimeout(() => {
             Actions.invokeAction('CompleteTask', { task })
               .catch((e) => console.error('[IsthaAgentAssistPlugin] CompleteTask failed:', e));
@@ -184,5 +222,51 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
         }
       }
     });
+  }
+
+  // ── Callback channel registration ────────────────────────────────────────
+  registerCallbackChannel(flex, manager) {
+    console.log('[IsthaAgentAssistPlugin] registering callback channel');
+
+    const isCallbackTask = (task) =>
+      task.taskChannelUniqueName === 'callback' &&
+      (task.attributes.taskType === 'callback' || task.attributes.type === 'callback');
+
+    const CallbackChannel = flex.DefaultTaskChannels.createDefaultTaskChannel(
+      'callback',
+      isCallbackTask,
+      'CallbackIcon',
+      'CallbackIcon',
+      'palegreen',
+    );
+
+    CallbackChannel.templates.TaskListItem.firstLine = (task) => `Callback: ${task.queueName}`;
+    CallbackChannel.templates.TaskCanvasHeader.title = (task) => `Callback: ${task.queueName}`;
+    CallbackChannel.templates.IncomingTaskCanvas.firstLine = (task) => task.queueName;
+
+    flex.TaskChannels.register(CallbackChannel);
+
+    // Replace the TaskInfoPanel with the callback UI for callback tasks
+    flex.TaskInfoPanel.Content.replace(
+      <CallbackComponent key="callback-component" manager={manager} />,
+      {
+        sortOrder: -1,
+        if: (props) =>
+          props.task &&
+          (props.task.attributes.taskType === 'callback' || props.task.attributes.type === 'callback'),
+      }
+    );
+
+    console.log('[IsthaAgentAssistPlugin] Callback channel registered');
+  }
+
+  // ── Redux registration ───────────────────────────────────────────────────
+  registerReducers(manager) {
+    if (!manager.store.addReducer) {
+      console.error(`[IsthaAgentAssistPlugin] FlexUI > 1.9.0 required for built-in Redux`);
+      return;
+    }
+    manager.store.addReducer(namespace, reducers);
+    console.log('[IsthaAgentAssistPlugin] Redux reducers registered — namespace:', namespace);
   }
 }
