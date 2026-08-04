@@ -25,7 +25,7 @@ export default class CallbackComponent extends React.Component {
 
     const { queueSid, attributes } = this.props.task;
     // 'callback' is the attribute key written by the inqueue-callback serverless function
-    const { callback, phone_number, from, authenticationStatus, lastOpenIntent, IVRPathSummary, statedReason, sentimentAnalysis } = attributes;
+    const { callback, phone_number, from, authenticationStatus, lastOpenIntent, IVRPathSummary, statedReason, sentimentAnalysis, accountNumber, callerName, accountName } = attributes;
     const callbackNumber = callback || phone_number;
     console.log('[CallbackComponent] startCall callbackNumber=', callbackNumber);
 
@@ -39,6 +39,9 @@ export default class CallbackComponent extends React.Component {
       IVRPathSummary:       IVRPathSummary       || null,
       statedReason:         statedReason         || null,
       sentimentAnalysis:    sentimentAnalysis     || null,
+      accountNumber:        accountNumber         || null,
+      callerName:           callerName            || null,
+      accountName:          accountName           || null,
     };
 
     // Disable the call button. Attempt counter increments in beforeCompleteTask

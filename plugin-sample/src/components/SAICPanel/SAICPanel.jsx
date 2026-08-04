@@ -554,7 +554,7 @@ const SAICPanel = ({ task: taskProp }) => {
   const accountNumber =
     preCall?.accountNumber ||
     attrs.accountNumber || attrs.account_number || attrs.AccountNumber ||
-    callbackAttrs.accountNumber || callbackAttrs.account_number ||
+    callbackAttrs.AccountNumber || callbackAttrs.accountNumber || callbackAttrs.account_number ||
     null;
 
   const callerName = preCall?.callerName || attrs.callerName || attrs.name || callbackAttrs.callerName || null;

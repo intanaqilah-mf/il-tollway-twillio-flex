@@ -68,13 +68,19 @@ exports.handler = function (context, event, callback) {
   let IVRPathSummary       = event.IVRPathSummary       || '';
   let statedReason         = event.statedReason         || '';
   let sentimentAnalysis    = event.sentimentAnalysis    || '';
+  let accountNumber        = event.AccountNumber        || event.accountNumber || '';
+  let callerName           = event.callerName           || event.customerName || '';
+  let accountName          = event.accountName          || event.account_name || '';
 
   let queryStr = '&language='+language+'&isHoliday='+isHoliday+'&isHolidayTomorrow='+isHolidayTomorrow+'&endOfDayTime='+endOfDayTime+'&startOfDayTime='+startOfDayTime+'&queueStartTime='+queueStartTime+'&fleet='+fleet+'&workflowSid='+workflowSid
     +'&authenticationStatus='+encodeURIComponent(authenticationStatus)
     +'&lastOpenIntent='+encodeURIComponent(lastOpenIntent)
     +'&IVRPathSummary='+encodeURIComponent(IVRPathSummary)
     +'&statedReason='+encodeURIComponent(statedReason)
-    +'&sentimentAnalysis='+encodeURIComponent(sentimentAnalysis);
+    +'&sentimentAnalysis='+encodeURIComponent(sentimentAnalysis)
+    +'&accountNumber='+encodeURIComponent(accountNumber)
+    +'&callerName='+encodeURIComponent(callerName)
+    +'&accountName='+encodeURIComponent(accountName);
 
   //  find the task given the callSid - get TaskSid
   async function getTask(callSid) {
@@ -181,6 +187,9 @@ exports.handler = function (context, event, callback) {
       IVRPathSummary:       getOrigTaskData(taskInfo.originalTaskData, 'IVRPathSummary', 'getAttribute') || IVRPathSummary || null,
       statedReason:         getOrigTaskData(taskInfo.originalTaskData, 'statedReason', 'getAttribute') || statedReason || null,
       sentimentAnalysis:    getOrigTaskData(taskInfo.originalTaskData, 'sentimentAnalysis', 'getAttribute') || sentimentAnalysis || null,
+      accountNumber:        getOrigTaskData(taskInfo.originalTaskData, 'AccountNumber', 'getAttribute') || getOrigTaskData(taskInfo.originalTaskData, 'accountNumber', 'getAttribute') || getOrigTaskData(taskInfo.originalTaskData, 'account_number', 'getAttribute') || accountNumber || null,
+      callerName:           getOrigTaskData(taskInfo.originalTaskData, 'callerName', 'getAttribute') || getOrigTaskData(taskInfo.originalTaskData, 'customerName', 'getAttribute') || callerName || null,
+      accountName:          getOrigTaskData(taskInfo.originalTaskData, 'accountName', 'getAttribute') || getOrigTaskData(taskInfo.originalTaskData, 'account_name', 'getAttribute') || getOrigTaskData(taskInfo.originalTaskData, 'customerName', 'getAttribute') || accountName || null,
     };
     try {
       let cbTask = await client.taskrouter
