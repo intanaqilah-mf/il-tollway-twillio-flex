@@ -38,7 +38,10 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     // ── Callback channel + UI ────────────────────────────────────────────────
     this.registerCallbackChannel(flex, manager);
 
-    // When an outbound callback call finishes, auto-complete the originating callback task
+    // When an outbound callback call finishes, apply no-answer retry logic.
+    // The callback task is kept until 3 call attempts have been made; only then it is auto-completed.
+    // Agents use the "Callback Complete" button in the callback UI to complete the task after a
+    // successful call (attempts 1 or 2).
     flex.Actions.addListener('beforeCompleteTask', (payload) => {
       const attrs = payload.task.attributes || {};
       if (attrs.type === 'outbound' && attrs.callbackTaskSid) {
@@ -48,12 +51,30 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
             (t) => (t.taskSid || t.sid) === attrs.callbackTaskSid
           );
           if (cbTask) {
-            console.log('[IsthaAgentAssistPlugin] outbound done — completing callback task', attrs.callbackTaskSid);
-            setTimeout(() => {
-              Actions.invokeAction('CompleteTask', { task: cbTask }).catch((e) =>
-                console.error('[IsthaAgentAssistPlugin] CompleteTask (callback) failed:', e)
+            // placeCallRetry represents the current (just-completed) attempt number.
+            // We check BEFORE incrementing so attempt 3 triggers auto-complete.
+            const currentAttempts = parseInt(cbTask.attributes?.placeCallRetry || 1, 10);
+            console.log('[IsthaAgentAssistPlugin] outbound done — callback attempt', currentAttempts, 'of 3');
+
+            if (currentAttempts >= 3) {
+              console.log('[IsthaAgentAssistPlugin] max attempts reached — completing callback task', attrs.callbackTaskSid);
+              setTimeout(() => {
+                Actions.invokeAction('CompleteTask', { task: cbTask }).catch((e) =>
+                  console.error('[IsthaAgentAssistPlugin] CompleteTask (callback) failed:', e)
+                );
+              }, 1500);
+            } else {
+              // Increment attempt counter and re-enable call button in one write — no race condition.
+              // Uses the Flex SDK directly; no serverless round-trip needed.
+              console.log('[IsthaAgentAssistPlugin] no-answer — incrementing to attempt', currentAttempts + 1, 're-enabling button');
+              cbTask.setAttributes({
+                ...cbTask.attributes,
+                placeCallRetry: currentAttempts + 1,
+                ui_plugin: { ...(cbTask.attributes?.ui_plugin || {}), cbCallButtonAccessibility: false },
+              }).catch((e) =>
+                console.error('[IsthaAgentAssistPlugin] setAttributes (increment+re-enable) failed:', e)
               );
-            }, 1500);
+            }
           }
         }
       }

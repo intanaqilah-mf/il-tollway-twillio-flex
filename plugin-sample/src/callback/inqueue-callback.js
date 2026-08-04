@@ -62,7 +62,19 @@ exports.handler = function (context, event, callback) {
   const speechTimeout = 3;
   //    END CUSTOMIZATIONS
   
-  let queryStr = '&language='+language+'&isHoliday='+isHoliday+'&isHolidayTomorrow='+isHolidayTomorrow+'&endOfDayTime='+endOfDayTime+'&startOfDayTime='+startOfDayTime+'&queueStartTime='+queueStartTime+'&fleet='+fleet+'&workflowSid='+workflowSid;
+  // Pre-call attributes passed from Studio/IVR flow
+  let authenticationStatus = event.authenticationStatus || '';
+  let lastOpenIntent       = event.lastOpenIntent       || '';
+  let IVRPathSummary       = event.IVRPathSummary       || '';
+  let statedReason         = event.statedReason         || '';
+  let sentimentAnalysis    = event.sentimentAnalysis    || '';
+
+  let queryStr = '&language='+language+'&isHoliday='+isHoliday+'&isHolidayTomorrow='+isHolidayTomorrow+'&endOfDayTime='+endOfDayTime+'&startOfDayTime='+startOfDayTime+'&queueStartTime='+queueStartTime+'&fleet='+fleet+'&workflowSid='+workflowSid
+    +'&authenticationStatus='+encodeURIComponent(authenticationStatus)
+    +'&lastOpenIntent='+encodeURIComponent(lastOpenIntent)
+    +'&IVRPathSummary='+encodeURIComponent(IVRPathSummary)
+    +'&statedReason='+encodeURIComponent(statedReason)
+    +'&sentimentAnalysis='+encodeURIComponent(sentimentAnalysis);
 
   //  find the task given the callSid - get TaskSid
   async function getTask(callSid) {
@@ -163,6 +175,12 @@ exports.handler = function (context, event, callback) {
       ),
       ui_plugin: { cbCallButtonAccessibility: false },
       placeCallRetry: 1,
+      // Pre-call data surfaced in agent's SAICPanel before/during the call
+      authenticationStatus: authenticationStatus || null,
+      lastOpenIntent:       lastOpenIntent       || null,
+      IVRPathSummary:       IVRPathSummary       || null,
+      statedReason:         statedReason         || null,
+      sentimentAnalysis:    sentimentAnalysis     || null,
     };
     try {
       let cbTask = await client.taskrouter

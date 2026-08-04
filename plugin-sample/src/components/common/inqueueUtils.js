@@ -5,7 +5,8 @@ import { post } from '../../helpers/http';
 const url = buildUrl('/inqueue-utils');
 
 export const callButtonAccessibility = async (task, type, state) => {
-  const { taskSid, attributes } = task;
+  const taskSid = task.taskSid || task.sid;
+  const { attributes } = task;
   console.log(`[inqueueUtils] callButtonAccessibility taskSid=${taskSid} type=${type} state=${state}`);
   const data = {
     mode: 'UiPlugin',
@@ -32,4 +33,15 @@ export const startTransfer = async (task) => {
     state: false,
   };
   return post(url, data, { verbose: true, title: 'requeueTasks' });
+};
+
+export const incrementCallAttempt = async (task) => {
+  const taskSid = task.taskSid || task.sid;
+  console.log(`[inqueueUtils] incrementCallAttempt taskSid=${taskSid}`);
+  const data = {
+    mode: 'incrementCallAttempt',
+    Token: Flex.Manager.getInstance().user.token,
+    taskSid,
+  };
+  return post(url, data, { verbose: true, title: 'incrementCallAttempt' });
 };

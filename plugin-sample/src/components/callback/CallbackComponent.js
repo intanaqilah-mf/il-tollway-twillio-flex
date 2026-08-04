@@ -36,6 +36,13 @@ export default class CallbackComponent extends React.Component {
       callbackTaskSid: this.props.task.taskSid,
     };
 
+    // Disable the call button. Attempt counter increments in beforeCompleteTask
+    // (after the call ends) so the displayed count reflects completed attempts.
+    this.props.task.setAttributes({
+      ...attributes,
+      ui_plugin: { ...(attributes.ui_plugin || {}), cbCallButtonAccessibility: true },
+    }).catch((e) => console.error('[CallbackComponent] setAttributes error:', e));
+
     try {
       await Flex.Actions.invokeAction('StartOutboundCall', {
         destination: callbackNumber,
@@ -46,18 +53,28 @@ export default class CallbackComponent extends React.Component {
     } catch (e) {
       console.error('[CallbackComponent] StartOutboundCall error:', e.message);
     }
-
-    // Update task attribute after call is placed — avoids "Action is pending"
-    // race condition where Flex is busy processing a TaskRouter attribute event
-    this.cbCallButtonAccessibility(true).catch((e) =>
-      console.error('[CallbackComponent] cbCallButtonAccessibility error:', e)
-    );
   };
 
   startTransfer = async () => {
     console.log('[CallbackComponent] startTransfer (requeue) taskSid=', this.props.task.taskSid);
     await this.cbCallButtonAccessibility(false);
     return inqueueUtils.startTransfer(this.props.task);
+  };
+
+  markDone = async () => {
+    console.log('[CallbackComponent] markDone taskSid=', this.props.task.taskSid);
+    try {
+      await Flex.Actions.invokeAction('WrapUpTask', { task: this.props.task });
+      setTimeout(async () => {
+        try {
+          await Flex.Actions.invokeAction('CompleteTask', { task: this.props.task });
+        } catch (e) {
+          console.error('[CallbackComponent] CompleteTask error:', e);
+        }
+      }, 500);
+    } catch (e) {
+      console.error('[CallbackComponent] WrapUpTask error:', e);
+    }
   };
 
   render() {
@@ -124,6 +141,17 @@ export default class CallbackComponent extends React.Component {
             fullWidth
           >
             Requeue Callback ( {count} of 3 )
+          </Button>
+        </div>
+        <p style={styles.textCenter}>Customer answered? Mark the callback as done.</p>
+        <div style={styles.buttonWrapper}>
+          <Button
+            variant="destructive_secondary"
+            onClick={() => this.markDone()}
+            disabled={isCallButtonDisabled || count < 2}
+            fullWidth
+          >
+            Callback Complete
           </Button>
         </div>
         <p>&nbsp;</p>
