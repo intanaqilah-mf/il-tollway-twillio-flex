@@ -61,6 +61,13 @@ exports.handler = function (context, event, callback) {
     let workflowSid = event.workflowSid;
     let fleet = event.fleet ? event.fleet : 'false';
 
+    // Pre-call attributes passed from Studio/IVR flow
+    let authenticationStatus = event.authenticationStatus || '';
+    let lastOpenIntent       = event.lastOpenIntent       || '';
+    let IVRPathSummary       = event.IVRPathSummary       || '';
+    let statedReason         = event.statedReason         || '';
+    let sentimentAnalysis    = event.sentimentAnalysis    || '';
+
     console.log(`[inqueue-callback] REQUEST mode=${event.mode || 'main'} attempt=${event.attempt || '1'} callSid=${event.CallSid || 'N/A'} phone=${event.cbphone || event.From || 'N/A'}`);
     console.log("Received EWT is" + event.ewt);
     let ewt = (event.ewt >= 0) ? event.ewt : 0;
@@ -70,7 +77,12 @@ exports.handler = function (context, event, callback) {
 
     //    END CUSTOMIZATIONS
     let command;
-    let queryStr = '&language=' + language + '&isHoliday=' + isHoliday + '&isHolidayTomorrow=' + isHolidayTomorrow + '&endOfDayTime=' + endOfDayTime + '&startOfDayTime=' + startOfDayTime + '&queueStartTime=' + queueStartTime + '&workflowSid=' + workflowSid + '&fleet=' + fleet + '&ewt=' + ewt;
+    let queryStr = '&language=' + language + '&isHoliday=' + isHoliday + '&isHolidayTomorrow=' + isHolidayTomorrow + '&endOfDayTime=' + endOfDayTime + '&startOfDayTime=' + startOfDayTime + '&queueStartTime=' + queueStartTime + '&workflowSid=' + workflowSid + '&fleet=' + fleet + '&ewt=' + ewt
+        + '&authenticationStatus=' + encodeURIComponent(authenticationStatus)
+        + '&lastOpenIntent='       + encodeURIComponent(lastOpenIntent)
+        + '&IVRPathSummary='       + encodeURIComponent(IVRPathSummary)
+        + '&statedReason='         + encodeURIComponent(statedReason)
+        + '&sentimentAnalysis='    + encodeURIComponent(sentimentAnalysis);
 
     //  find the task given the callSid - get TaskSid
     async function getTask(callSid) {
@@ -177,6 +189,11 @@ exports.handler = function (context, event, callback) {
             ),
             ui_plugin: { cbCallButtonAccessibility: false },
             placeCallRetry: 1,
+            authenticationStatus: getOrigTaskData(taskInfo.originalTaskData, 'authenticationStatus', 'getAttribute') || authenticationStatus || null,
+            lastOpenIntent:       getOrigTaskData(taskInfo.originalTaskData, 'lastOpenIntent', 'getAttribute') || getOrigTaskData(taskInfo.originalTaskData, 'intentIdentified', 'getAttribute') || lastOpenIntent || null,
+            IVRPathSummary:       getOrigTaskData(taskInfo.originalTaskData, 'IVRPathSummary', 'getAttribute') || IVRPathSummary || null,
+            statedReason:         getOrigTaskData(taskInfo.originalTaskData, 'statedReason', 'getAttribute') || statedReason || null,
+            sentimentAnalysis:    getOrigTaskData(taskInfo.originalTaskData, 'sentimentAnalysis', 'getAttribute') || sentimentAnalysis || null,
         };
         try {
             let cbTask = await client.taskrouter

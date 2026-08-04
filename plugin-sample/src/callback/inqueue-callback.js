@@ -176,11 +176,11 @@ exports.handler = function (context, event, callback) {
       ui_plugin: { cbCallButtonAccessibility: false },
       placeCallRetry: 1,
       // Pre-call data surfaced in agent's SAICPanel before/during the call
-      authenticationStatus: authenticationStatus || null,
-      lastOpenIntent:       lastOpenIntent       || null,
-      IVRPathSummary:       IVRPathSummary       || null,
-      statedReason:         statedReason         || null,
-      sentimentAnalysis:    sentimentAnalysis     || null,
+      authenticationStatus: getOrigTaskData(taskInfo.originalTaskData, 'authenticationStatus', 'getAttribute') || authenticationStatus || null,
+      lastOpenIntent:       getOrigTaskData(taskInfo.originalTaskData, 'lastOpenIntent', 'getAttribute') || getOrigTaskData(taskInfo.originalTaskData, 'intentIdentified', 'getAttribute') || lastOpenIntent || null,
+      IVRPathSummary:       getOrigTaskData(taskInfo.originalTaskData, 'IVRPathSummary', 'getAttribute') || IVRPathSummary || null,
+      statedReason:         getOrigTaskData(taskInfo.originalTaskData, 'statedReason', 'getAttribute') || statedReason || null,
+      sentimentAnalysis:    getOrigTaskData(taskInfo.originalTaskData, 'sentimentAnalysis', 'getAttribute') || sentimentAnalysis || null,
     };
     try {
       let cbTask = await client.taskrouter
