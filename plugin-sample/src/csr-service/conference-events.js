@@ -262,6 +262,8 @@ exports.handler = async function (context, event, callback) {
                     "parameter9.value": "true",
                     "parameter10.name": "customerCallSid",
                     "parameter10.value": customerCallSID,
+                    "parameter11.name": "language",
+                    "parameter11.value": taskAttributes.language,
                 });
                 console.log("✅ Stream started | StreamSid:", stream.sid);
             } catch (error) {

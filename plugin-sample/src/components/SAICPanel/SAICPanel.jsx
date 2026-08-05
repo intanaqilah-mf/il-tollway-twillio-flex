@@ -267,12 +267,14 @@ const SUMMARY_LABELS = {
 };
 const SUMMARY_DISPLAY_KEYS = ['situation', 'action', 'resolution', 'customer_satisfaction'];
 
-// Regex patterns for each key — customer_satisfaction may appear as "customer satisfaction" (space) in AI output
+// Regex patterns for each key — customer_satisfaction may appear as "customer satisfaction" (space) in AI output.
+// \b word boundaries are critical: "satisfaction" contains "action" as a substring, so without \b the
+// action pattern would match inside "satisfaction" and capture the wrong section content.
 const SUMMARY_KEY_PATTERNS = {
-  situation: 'situation',
-  action: 'action',
-  resolution: 'resolution',
-  customer_satisfaction: 'customer[_ ]satisfaction',
+  situation: '\\bsituation\\b',
+  action: '\\baction\\b',
+  resolution: '\\bresolution\\b',
+  customer_satisfaction: '\\bcustomer[_ ]satisfaction\\b',
 };
 
 function parseSummaryFields(text) {
