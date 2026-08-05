@@ -32,6 +32,24 @@ const EMPTY_STATE = {
 // Entry shape: { state, listeners, ws, retryCount, reconnectTimer, intentionalClose, callSid, taskAttrs }
 const registry = new Map();
 
+/**
+ * Returns true if at least one agent-speech transcript was received for the given
+ * outbound task SID.  Used by IsthaAgentAssistPlugin to distinguish a real
+ * conversation (customer picked up) from a voicemail / no-answer scenario when
+ * deciding whether to auto-complete the linked callback task.
+ *
+ * Transcript messages arrive in real-time during the call via the AI WebSocket.
+ * By the time the outbound task reaches wrapup and beforeCompleteTask fires the
+ * transcripts should already be in the registry.  If the AI service is down and
+ * no transcripts ever arrived this returns false (safe fallback — the callback
+ * task stays and the agent can click "Callback Complete" manually).
+ */
+export function hadAgentSpeech(taskSid) {
+  const entry = registry.get(taskSid);
+  if (!entry) return false;
+  return entry.state.transcript.some((t) => t.speaker === 'agent');
+}
+
 const INACTIVE = ['pending', 'reserved', 'canceled', 'completed'];
 
 // Resolve the agent-leg callSid for a given task.

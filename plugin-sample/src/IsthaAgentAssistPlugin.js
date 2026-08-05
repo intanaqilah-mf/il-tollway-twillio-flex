@@ -5,6 +5,7 @@ import SAICPanel from './components/SAICPanel/SAICPanel';
 import LiveTranscript from './components/LiveTranscript/LiveTranscript';
 import { CallbackComponent } from './components/callback';
 import reducers, { namespace } from './states';
+import { hadAgentSpeech } from './hooks/useAgentAssistWebSocket';
 
 const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
 
@@ -38,10 +39,6 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     // ── Callback channel + UI ────────────────────────────────────────────────
     this.registerCallbackChannel(flex, manager);
 
-    // When an outbound callback call finishes, apply no-answer retry logic.
-    // The callback task is kept until 3 call attempts have been made; only then it is auto-completed.
-    // Agents use the "Callback Complete" button in the callback UI to complete the task after a
-    // successful call (attempts 1 or 2).
     flex.Actions.addListener('beforeCompleteTask', (payload) => {
       const attrs = payload.task.attributes || {};
       if (attrs.type === 'outbound' && attrs.callbackTaskSid) {
@@ -51,22 +48,42 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
             (t) => (t.taskSid || t.sid) === attrs.callbackTaskSid
           );
           if (cbTask) {
-            // placeCallRetry represents the current (just-completed) attempt number.
-            // We check BEFORE incrementing so attempt 3 triggers auto-complete.
+            const outboundSid = payload.task.taskSid || payload.task.sid;
+            // hadAgentSpeech checks the AI WebSocket transcript registry: if the agent
+            // spoke during the call, the customer picked up (voicemail only generates
+            // [customer] speech, never [agent] speech).  If the AI service is down and
+            // no transcripts arrived, wasAnswered safely defaults to false — the task
+            // stays and the agent can complete it manually via "Callback Complete".
+            const wasAnswered = hadAgentSpeech(outboundSid);
             const currentAttempts = parseInt(cbTask.attributes?.placeCallRetry || 1, 10);
-            console.log('[IsthaAgentAssistPlugin] outbound done — callback attempt', currentAttempts, 'of 3');
+            console.log('[IsthaAgentAssistPlugin] outbound done — attempt', currentAttempts, 'of 3 | wasAnswered:', wasAnswered);
 
-            if (currentAttempts >= 3) {
-              console.log('[IsthaAgentAssistPlugin] max attempts reached — completing callback task', attrs.callbackTaskSid);
-              setTimeout(() => {
-                Actions.invokeAction('CompleteTask', { task: cbTask }).catch((e) =>
-                  console.error('[IsthaAgentAssistPlugin] CompleteTask (callback) failed:', e)
-                );
+            // Complete the callback task if:
+            //   • customer actually picked up (agent speech detected in transcript), OR
+            //   • max attempts (3) exhausted regardless of outcome
+            // Otherwise increment the counter and re-enable the call button for the next retry.
+            if (wasAnswered || currentAttempts >= 3) {
+              const reason = wasAnswered ? 'customer answered' : 'max attempts reached';
+              console.log('[IsthaAgentAssistPlugin] completing callback task —', reason, '| attempt:', currentAttempts, '| sid:', attrs.callbackTaskSid);
+              setTimeout(async () => {
+                // Callback task is in 'assigned' state — must WrapUp before Complete.
+                try {
+                  await Actions.invokeAction('WrapUpTask', { task: cbTask });
+                  console.log('[IsthaAgentAssistPlugin] WrapUpTask (callback) done, completing in 300ms…');
+                } catch (e) {
+                  console.warn('[IsthaAgentAssistPlugin] WrapUpTask (callback) skipped (may already be wrapping):', e?.message);
+                }
+                await new Promise((r) => setTimeout(r, 300));
+                try {
+                  await Actions.invokeAction('CompleteTask', { task: cbTask });
+                  console.log('[IsthaAgentAssistPlugin] callback task completed successfully');
+                } catch (e) {
+                  console.error('[IsthaAgentAssistPlugin] CompleteTask (callback) failed:', e);
+                }
               }, 1500);
             } else {
-              // Increment attempt counter and re-enable call button in one write — no race condition.
-              // Uses the Flex SDK directly; no serverless round-trip needed.
-              console.log('[IsthaAgentAssistPlugin] no-answer — incrementing to attempt', currentAttempts + 1, 're-enabling button');
+              // No answer yet and retries remain — increment and re-enable call button.
+              console.log('[IsthaAgentAssistPlugin] no answer on attempt', currentAttempts, '— incrementing to', currentAttempts + 1, ', re-enabling button');
               cbTask.setAttributes({
                 ...cbTask.attributes,
                 placeCallRetry: currentAttempts + 1,
@@ -224,15 +241,18 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     try { flex.TaskListButtons.Content.remove('wrapup'); } catch {}
     try { flex.TaskCanvasHeader.Content.remove('actions'); } catch {}
 
-    // ── Auto-complete non-callback tasks on wrap-up ──────────────────────────
-    // Callback tasks are excluded — agents manage them via Requeue / Place Call Now.
+    // ── Auto-complete non-callback wrapping tasks ───────────────────────────
+    // Callback tasks are excluded — they are completed by the beforeCompleteTask
+    // listener above (triggered when the linked outbound task completes).
     const autoCompleted = new Set();
     Manager.getInstance().store.subscribe(() => {
       const tasks = Manager.getInstance().store.getState()?.flex?.worker?.tasks;
       if (!tasks) return;
       for (const task of tasks.values()) {
         const sid = task.taskSid || task.sid;
-        const isCallback = task.attributes?.taskType === 'callback' || task.attributes?.type === 'callback';
+        const attrs = task.attributes || {};
+        const isCallback = attrs.taskType === 'callback' || attrs.type === 'callback';
+
         if (task.status === 'wrapping' && !autoCompleted.has(sid) && !isCallback) {
           autoCompleted.add(sid);
           console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 10s');

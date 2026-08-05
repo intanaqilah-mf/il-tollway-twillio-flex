@@ -275,36 +275,6 @@ const SUMMARY_KEY_PATTERNS = {
   customer_satisfaction: 'customer[_ ]satisfaction',
 };
 
-// When the AI consolidates all four fields into a single customer_satisfaction prose blob
-// (e.g. "N Resolution ... Customer satisfaction ... Situation ... Action ..."),
-// this parser splits it back out by finding each inline label and slicing between them.
-function parseEmbeddedProse(text) {
-  if (!text) return null;
-  // Strip a leading single uppercase-letter prefix the AI sometimes prepends (e.g. "N ")
-  const cleaned = text.replace(/^[A-Z]\s+/, '');
-  const labels = [
-    { key: 'resolution', re: /\bresolution\b/i },
-    { key: 'customer_satisfaction', re: /\bcustomer\s+satisfaction\b/i },
-    { key: 'situation', re: /\bsituation\b/i },
-    { key: 'action', re: /\baction\b/i },
-  ];
-  const positions = [];
-  for (const label of labels) {
-    const m = label.re.exec(cleaned);
-    if (m) positions.push({ key: label.key, start: m.index, end: m.index + m[0].length });
-  }
-  if (positions.length < 2) return null;
-  positions.sort((a, b) => a.start - b.start);
-  const result = {};
-  for (let i = 0; i < positions.length; i++) {
-    const { key, end } = positions[i];
-    const nextStart = positions[i + 1]?.start ?? cleaned.length;
-    const value = cleaned.slice(end, nextStart).trim().replace(/^[:\s.,]+/, '').replace(/[.,\s]+$/, '');
-    if (value) result[key] = value;
-  }
-  return Object.keys(result).length >= 2 ? result : null;
-}
-
 function parseSummaryFields(text) {
   if (!text) return null;
   const result = {};
@@ -320,20 +290,7 @@ function parseSummaryFields(text) {
     const m = text.match(pattern);
     if (m) { result[key] = m[1].trim(); matched = true; }
   }
-  if (!matched) return null;
-  // If the AI consolidated all field values into the customer_satisfaction blob, re-parse
-  // that blob and distribute the extracted values back into their individual fields.
-  const embedded = parseEmbeddedProse(result.customer_satisfaction);
-  if (embedded) {
-    // Strip embedded section labels from customer_satisfaction so only the
-    // actual satisfaction text is shown - Situation/Action/Resolution have their own fields.
-    const firstLabel = result.customer_satisfaction?.search(/\b(situation|action|resolution)\b/i) ?? -1;
-    if (firstLabel !== -1) {
-      result.customer_satisfaction = result.customer_satisfaction.slice(0, firstLabel).trim().replace(/[.,\s]+$/, "");
-    }
-    Object.assign(result, embedded);
-  }
-  return result;
+  return matched ? result : null;
 }
 
 function CopyableValue({ value, placeholder }) {
