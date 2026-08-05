@@ -281,12 +281,14 @@ function parseSummaryFields(text) {
   let matched = false;
   for (let i = 0; i < SUMMARY_KEYS.length; i++) {
     const key = SUMMARY_KEYS[i];
-    const nextKey = SUMMARY_KEYS[i + 1];
     const keyPat = SUMMARY_KEY_PATTERNS[key];
-    const nextPat = nextKey ? SUMMARY_KEY_PATTERNS[nextKey] : null;
-    const pattern = nextPat
-      ? new RegExp(`${keyPat}\\s+(.+?)\\s+${nextPat}`, 'is')
-      : new RegExp(`${keyPat}\\s+(.+?)$`, 'is');
+    // Stop at ANY other section header — this makes parsing order-independent
+    // so the sections can arrive in any order from the backend.
+    const allOtherPats = Object.entries(SUMMARY_KEY_PATTERNS)
+      .filter(([k]) => k !== key)
+      .map(([, p]) => p)
+      .join('|');
+    const pattern = new RegExp(`${keyPat}\\s+(.+?)(?=\\s+(?:${allOtherPats})|$)`, 'is');
     const m = text.match(pattern);
     if (m) { result[key] = m[1].trim(); matched = true; }
   }
