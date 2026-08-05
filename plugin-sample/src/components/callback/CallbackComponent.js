@@ -129,38 +129,30 @@ export default class CallbackComponent extends React.Component {
           <li>&nbsp;</li>
         </ul>
         <div style={styles.buttonWrapper}>
-          <Button
-            variant="primary"
-            size="large"
+          <button
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              backgroundColor: isCallButtonDisabled ? '#a9b4c2' : '#0263e0',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isCallButtonDisabled ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
             onClick={() => this.startCall()}
             disabled={isCallButtonDisabled}
-            fullWidth
           >
-            <CallIcon decorative />
-            &nbsp; Call {callbackNumber}
-          </Button>
-        </div>
-        <p style={styles.textCenter}>Not answering? Requeue to try later.</p>
-        <div style={styles.buttonWrapper}>
-          <Button
-            variant="secondary"
-            onClick={() => this.startTransfer()}
-            disabled={count >= 3}
-            fullWidth
-          >
-            Requeue Callback ( {count} of 3 )
-          </Button>
-        </div>
-        <p style={styles.textCenter}>Customer answered? Mark the callback as done.</p>
-        <div style={styles.buttonWrapper}>
-          <Button
-            variant="destructive_secondary"
-            onClick={() => this.markDone()}
-            disabled={isCallButtonDisabled || count < 2}
-            fullWidth
-          >
-            Callback Complete
-          </Button>
+            <span style={{ display: 'inline-flex', width: '16px', height: '16px', flexShrink: 0 }}>
+              <CallIcon decorative />
+            </span>
+            Call {callbackNumber}
+          </button>
         </div>
         <p>&nbsp;</p>
       </span>
