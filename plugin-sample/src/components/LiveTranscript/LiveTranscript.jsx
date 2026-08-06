@@ -213,7 +213,21 @@ const LiveTranscript = ({ task: taskProp }) => {
   const scrollRef = useRef(null);
   const callEnded = !loading && !task;
 
-  const messages = wsTranscript.map((entry) => ({
+  // For outbound callback tasks, hide transcript entries until the customer has spoken.
+  // Agent speech captured during the ringing phase (before pickup) is not shown.
+  // Once the customer speaks for the first time, all subsequent entries are shown.
+  const isOutboundCallback = !!(
+    task?.attributes?.type === 'outbound' && task?.attributes?.callbackTaskSid
+  );
+  const firstCustomerIdx = wsTranscript.findIndex((e) => e.speaker === 'customer');
+  const visibleTranscript =
+    isOutboundCallback && firstCustomerIdx === -1
+      ? []
+      : isOutboundCallback && firstCustomerIdx > 0
+        ? wsTranscript.slice(firstCustomerIdx)
+        : wsTranscript;
+
+  const messages = visibleTranscript.map((entry) => ({
     id: entry.ts,
     speaker: entry.speaker === 'agent' ? 'Agent' : 'Customer',
     text: entry.transcript,
@@ -267,9 +281,11 @@ const LiveTranscript = ({ task: taskProp }) => {
               ? ''
               : error
                 ? `WebSocket error: ${error}`
-                : connected
-                  ? 'Connected — waiting for speech...'
-                  : 'Connecting the call...'}
+                : isOutboundCallback && firstCustomerIdx === -1
+                  ? 'Dialing — waiting for customer to answer...'
+                  : connected
+                    ? 'Connected — waiting for speech...'
+                    : 'Connecting the call...'}
           </div>
         ) : (
           messages.map((msg) => {
