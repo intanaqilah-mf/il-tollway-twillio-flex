@@ -267,73 +267,47 @@ const SUMMARY_LABELS = {
 };
 const SUMMARY_DISPLAY_KEYS = ['situation', 'action', 'resolution', 'customer_satisfaction'];
 
-// Regex patterns for each key — customer_satisfaction may appear as "customer satisfaction" (space) in AI output
+// Regex patterns for each key — \b word boundaries prevent "action" matching inside
+// "customer_satisfaction", and "customer[_ ]satisfaction" handles space or underscore variants.
 const SUMMARY_KEY_PATTERNS = {
-  situation: 'situation',
-  action: 'action',
-  resolution: 'resolution',
-  customer_satisfaction: 'customer[_ ]satisfaction',
+  situation: '\\bsituation\\b',
+  action: '\\baction\\b',
+  resolution: '\\bresolution\\b',
+  customer_satisfaction: '\\bcustomer[_ ]satisfaction\\b',
 };
 
-// When the AI consolidates all four fields into a single customer_satisfaction prose blob
-// (e.g. "N Resolution ... Customer satisfaction ... Situation ... Action ..."),
-// this parser splits it back out by finding each inline label and slicing between them.
-function parseEmbeddedProse(text) {
-  if (!text) return null;
-  // Strip a leading single uppercase-letter prefix the AI sometimes prepends (e.g. "N ")
-  const cleaned = text.replace(/^[A-Z]\s+/, '');
-  const labels = [
-    { key: 'resolution', re: /\bresolution\b/i },
-    { key: 'customer_satisfaction', re: /\bcustomer\s+satisfaction\b/i },
-    { key: 'situation', re: /\bsituation\b/i },
-    { key: 'action', re: /\baction\b/i },
-  ];
-  const positions = [];
-  for (const label of labels) {
-    const m = label.re.exec(cleaned);
-    if (m) positions.push({ key: label.key, start: m.index, end: m.index + m[0].length });
-  }
-  if (positions.length < 2) return null;
-  positions.sort((a, b) => a.start - b.start);
-  const result = {};
-  for (let i = 0; i < positions.length; i++) {
-    const { key, end } = positions[i];
-    const nextStart = positions[i + 1]?.start ?? cleaned.length;
-    const value = cleaned.slice(end, nextStart).trim().replace(/^[:\s.,]+/, '').replace(/[.,\s]+$/, '');
-    if (value) result[key] = value;
-  }
-  return Object.keys(result).length >= 2 ? result : null;
-}
-
+// Position-based parser: finds where each section header appears in the raw text,
+// sorts by position, then slices content between consecutive headers.
+// This avoids the lookahead/fixed-order regex approach that truncated section content
+// whenever the AI used a section keyword (e.g. "action", "resolution") inside the body text.
 function parseSummaryFields(text) {
   if (!text) return null;
+
+  // Step 1: locate each section header in the raw text
+  const positions = [];
+  for (const key of SUMMARY_KEYS) {
+    const pat = new RegExp(SUMMARY_KEY_PATTERNS[key], 'i');
+    const m = pat.exec(text);
+    if (m) positions.push({ key, start: m.index, headerEnd: m.index + m[0].length });
+  }
+
+  if (positions.length === 0) return null;
+
+  // Step 2: sort by document position — handles any order the AI may produce them in
+  positions.sort((a, b) => a.start - b.start);
+
+  // Step 3: slice content between consecutive header positions.
+  // Words like "action" or "resolution" inside the content body are safely ignored
+  // because only tracked header positions drive the slicing.
   const result = {};
-  let matched = false;
-  for (let i = 0; i < SUMMARY_KEYS.length; i++) {
-    const key = SUMMARY_KEYS[i];
-    const nextKey = SUMMARY_KEYS[i + 1];
-    const keyPat = SUMMARY_KEY_PATTERNS[key];
-    const nextPat = nextKey ? SUMMARY_KEY_PATTERNS[nextKey] : null;
-    const pattern = nextPat
-      ? new RegExp(`${keyPat}\\s+(.+?)\\s+${nextPat}`, 'is')
-      : new RegExp(`${keyPat}\\s+(.+?)$`, 'is');
-    const m = text.match(pattern);
-    if (m) { result[key] = m[1].trim(); matched = true; }
+  for (let i = 0; i < positions.length; i++) {
+    const { key, headerEnd } = positions[i];
+    const nextStart = i + 1 < positions.length ? positions[i + 1].start : text.length;
+    const content = text.slice(headerEnd, nextStart).trim().replace(/^[:\s.,]+/, '');
+    if (content) result[key] = content;
   }
-  if (!matched) return null;
-  // If the AI consolidated all field values into the customer_satisfaction blob, re-parse
-  // that blob and distribute the extracted values back into their individual fields.
-  const embedded = parseEmbeddedProse(result.customer_satisfaction);
-  if (embedded) {
-    // Strip embedded section labels from customer_satisfaction so only the
-    // actual satisfaction text is shown - Situation/Action/Resolution have their own fields.
-    const firstLabel = result.customer_satisfaction?.search(/\b(situation|action|resolution)\b/i) ?? -1;
-    if (firstLabel !== -1) {
-      result.customer_satisfaction = result.customer_satisfaction.slice(0, firstLabel).trim().replace(/[.,\s]+$/, "");
-    }
-    Object.assign(result, embedded);
-  }
-  return result;
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function CopyableValue({ value, placeholder }) {
