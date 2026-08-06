@@ -197,6 +197,39 @@ function formatDuration(seconds) {
   return `${m}m ${s}s`;
 }
 
+/**
+ * Redacts payment card PII from a transcript string.
+ * Covers:
+ *   - Credit/debit card numbers (Visa/MC/Discover 4×4, Amex 4-6-5, or 13–19 raw digits)
+ *   - Expiry dates  (MM/YY, MM/YYYY, MM-YY, MM-YYYY)
+ *   - CVV/CVC/security codes (keyword + 3–4 digits)
+ */
+function redactPII(text) {
+  if (!text) return text;
+  let out = text;
+
+  // Standard 4×4 card format: 4532 1234 5678 9012 or 4532-1234-5678-9012
+  out = out.replace(/\b\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{3,4}\b/g, '[REDACTED]');
+
+  // Amex 4-6-5 format: 3782 822463 10005
+  out = out.replace(/\b\d{4}[\s\-]\d{6}[\s\-]\d{5}\b/g, '[REDACTED]');
+
+  // Raw continuous card digits (13–19 digits not already replaced)
+  out = out.replace(/\b\d{13,19}\b/g, '[REDACTED]');
+
+  // Expiry date: MM/YY, MM/YYYY, MM-YY, MM-YYYY
+  out = out.replace(/\b(0[1-9]|1[0-2])[\/\-]\d{2}(\d{2})?\b/g, '[REDACTED]');
+
+  // CVV / CVC / security code followed by 3–4 digits
+  out = out.replace(/\b(?:cvv|cvc|security\s+code)\s*[:\-]?\s*\d{3,4}\b/gi, '[REDACTED]');
+
+  // SSN: XXX-XX-XXXX, XXX XX XXXX, or 9 raw digits
+  out = out.replace(/\b\d{3}[\s\-]\d{2}[\s\-]\d{4}\b/g, '[REDACTED]');
+  out = out.replace(/\b(?:ssn|social\s+security(?:\s+number)?)\s*[:\-]?\s*\d{9}\b/gi, '[REDACTED]');
+
+  return out;
+}
+
 
 const LiveTranscript = ({ task: taskProp }) => {
   // withTaskContext may not inject task in Panel2 (deployed) — fall back to Flex store
@@ -233,7 +266,7 @@ const LiveTranscript = ({ task: taskProp }) => {
     // anything else (supervisor, external, unknown) → supervisor lane
     const speakerType = raw === 'agent' ? 'agent' : raw === 'customer' ? 'customer' : 'supervisor';
     const speakerLabel = speakerType === 'agent' ? 'Agent' : speakerType === 'customer' ? 'Customer' : 'Supervisor';
-    return { id: entry.ts, speakerType, speaker: speakerLabel, text: entry.transcript, time: formatTime(entry.ts) };
+    return { id: entry.ts, speakerType, speaker: speakerLabel, text: redactPII(entry.transcript), time: formatTime(entry.ts) };
   });
 
   useEffect(() => {
