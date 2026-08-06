@@ -5,7 +5,7 @@ import SAICPanel from './components/SAICPanel/SAICPanel';
 import LiveTranscript from './components/LiveTranscript/LiveTranscript';
 import { CallbackComponent } from './components/callback';
 import reducers, { namespace } from './states';
-import { hadAgentSpeech } from './hooks/useAgentAssistWebSocket';
+import { wasCallAnswered } from './hooks/useAgentAssistWebSocket';
 
 const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
 
@@ -49,17 +49,17 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
           );
           if (cbTask) {
             const outboundSid = payload.task.taskSid || payload.task.sid;
-            // hadAgentSpeech checks the AI WebSocket transcript registry: if the agent
-            // spoke during the call, the customer picked up (voicemail only generates
-            // [customer] speech, never [agent] speech).  If the AI service is down and
-            // no transcripts arrived, wasAnswered safely defaults to false — the task
-            // stays and the agent can complete it manually via "Callback Complete".
-            const wasAnswered = hadAgentSpeech(outboundSid);
+            // wasCallAnswered uses a three-tier check (see useAgentAssistWebSocket.js):
+            //   1. cbTask.attributes.customerAnswered (set by AMD callback in outbound-stream-start.js)
+            //   2. Transcript heuristic: requires customer speech + ≥3 speaker turns
+            //      (filters out agent-speaks-during-ringing and voicemail patterns)
+            //   3. Safe fallback false if AI service is down / no transcripts arrived.
+            const wasAnswered = wasCallAnswered(outboundSid, cbTask.attributes);
             const currentAttempts = parseInt(cbTask.attributes?.placeCallRetry || 1, 10);
-            console.log('[IsthaAgentAssistPlugin] outbound done — attempt', currentAttempts, 'of 3 | wasAnswered:', wasAnswered);
+            console.log('[IsthaAgentAssistPlugin] outbound done — attempt', currentAttempts, 'of 3 | wasCallAnswered:', wasAnswered, '| customerAnswered attr:', cbTask.attributes?.customerAnswered);
 
             // Complete the callback task if:
-            //   • customer actually picked up (agent speech detected in transcript), OR
+            //   • customer actually picked up (wasCallAnswered returned true), OR
             //   • max attempts (3) exhausted regardless of outcome
             // Otherwise increment the counter and re-enable the call button for the next retry.
             if (wasAnswered || currentAttempts >= 3) {

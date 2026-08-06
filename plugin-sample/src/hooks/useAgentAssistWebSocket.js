@@ -33,21 +33,104 @@ const EMPTY_STATE = {
 const registry = new Map();
 
 /**
- * Returns true if at least one agent-speech transcript was received for the given
- * outbound task SID.  Used by IsthaAgentAssistPlugin to distinguish a real
- * conversation (customer picked up) from a voicemail / no-answer scenario when
- * deciding whether to auto-complete the linked callback task.
+ * @deprecated Use wasCallAnswered() instead.
  *
- * Transcript messages arrive in real-time during the call via the AI WebSocket.
- * By the time the outbound task reaches wrapup and beforeCompleteTask fires the
- * transcripts should already be in the registry.  If the AI service is down and
- * no transcripts ever arrived this returns false (safe fallback — the callback
- * task stays and the agent can click "Callback Complete" manually).
+ * hadAgentSpeech() is UNRELIABLE as an "answered" indicator because the Twilio
+ * Media Stream starts on the agent's call leg before the customer even picks up.
+ * Any background noise or agent speech during the ring phase generates an 'agent'
+ * transcript, causing false positives (task completed even though call was never answered).
  */
 export function hadAgentSpeech(taskSid) {
   const entry = registry.get(taskSid);
   if (!entry) return false;
   return entry.state.transcript.some((t) => t.speaker === 'agent');
+}
+
+/**
+ * Returns true ONLY if the customer actually picked up the outbound callback call
+ * and a real two-way conversation occurred.
+ *
+ * WHY THIS REPLACES hadAgentSpeech():
+ *   The Media Stream is attached to the *agent's* call leg the moment the conference
+ *   is established — before the customer's phone is answered.  Any agent speech during
+ *   the ringing phase (e.g. "Hello? Hello?") generates `speaker:'agent'` transcripts,
+ *   making hadAgentSpeech() return true even when the customer never picked up.
+ *   Voicemail also falsely triggers it: the VM greeting is transcribed as `customer`,
+ *   and if the agent leaves a message, `agent` transcripts follow — both appear in the
+ *   registry and hadAgentSpeech() returns true.
+ *
+ * THREE-TIER LOGIC:
+ *   Tier 1 — Task attribute (authoritative): if `outbound-stream-start.js` received
+ *             an AMD status callback from Twilio, `cbTaskAttributes.customerAnswered`
+ *             will be true (human) or false (machine/no-answer).  This wins over all
+ *             other signals.
+ *
+ *   Tier 2 — Transcript heuristic (primary path):
+ *     • No customer speech at all   → no-answer (phone rang, nobody picked up)    → false
+ *     • Only customer speech        → voicemail where agent never spoke            → false
+ *     • ≥3 speaker turns            → genuine back-and-forth conversation          → true
+ *     • 2 turns, agent spoke first + customer reply ≤12 words → human pickup       → true
+ *     • 2 turns, agent spoke first + customer reply  >12 words → voicemail greeting → false
+ *     • 2 turns, customer-first     → voicemail greeting + agent leaving message   → false
+ *
+ *   Tier 3 — Safe fallback: if AI service is down and no transcripts arrived at all,
+ *             returns false so the callback task is NOT silently completed.
+ *
+ * @param {string} taskSid          - SID of the *outbound* task (not the callback task).
+ * @param {object} [cbTaskAttributes] - The callback task's current attributes (for AMD result).
+ */
+export function wasCallAnswered(taskSid, cbTaskAttributes = {}) {
+  // ── Tier 1: authoritative AMD/server-side signal ─────────────────────────
+  if (cbTaskAttributes?.customerAnswered === true)  return true;
+  if (cbTaskAttributes?.customerAnswered === false) return false;
+
+  // ── Tier 2: transcript heuristic ─────────────────────────────────────────
+  const entry = registry.get(taskSid);
+  if (!entry) return false;
+  const { transcript } = entry.state;
+  if (!transcript || transcript.length === 0) return false;
+
+  // No customer speech → phone rang but no one (human or VM) answered.
+  // The inbound_track only carries audio once the customer's call connects.
+  // Ring tones are NOT speech and won't generate transcripts.
+  const hasCustomerSpeech = transcript.some((t) => t.speaker === 'customer');
+  if (!hasCustomerSpeech) return false;
+
+  // Count distinct speaker turns (each change of speaker = 1 new turn).
+  let turns = 0;
+  let lastSpeaker = null;
+  for (const t of transcript) {
+    if (t.speaker !== lastSpeaker) {
+      turns++;
+      lastSpeaker = t.speaker;
+    }
+  }
+
+  // ≥ 3 turns = genuine conversation (e.g. agent → customer → agent).
+  // Voicemail is almost always ≤ 2 turns: [VM greeting] → [agent message].
+  if (turns >= 3) return true;
+
+  const customerEntries = transcript.filter((t) => t.speaker === 'customer');
+
+  // 2 turns — who spoke first determines intent:
+  //   • Customer first → VM greeting + agent leaving message → false
+  //   • Agent first   → could be (a) human pickup that responded briefly, OR
+  //                      (b) agent speaks during ringing then VM picks up.
+  //     We distinguish (a) vs (b) by the LENGTH of the customer's response:
+  //       – Voicemail greetings are 15-30+ words ("Hello, thank you for your call…
+  //         please leave a message after the tone…")
+  //       – A real human's first response is almost always ≤ 10 words ("Hello?",
+  //         "Yes, speaking", "Hi, who is this?")
+  //     Threshold: ≤ 12 words → treat as human; > 12 words → treat as voicemail.
+  if (turns === 2 && transcript[0]?.speaker === 'agent') {
+    const customerText = customerEntries.map((t) => t.transcript || '').join(' ');
+    const wordCount = customerText.trim().split(/\s+/).filter(Boolean).length;
+    console.log('[AA] wasCallAnswered: 2-turn agent-first | customer word count:', wordCount);
+    return wordCount <= 12;
+  }
+
+  // Remaining: single-speaker segments, or customer-first 2-turn pattern → not a human pickup
+  return false;
 }
 
 const INACTIVE = ['pending', 'reserved', 'canceled', 'completed'];

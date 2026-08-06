@@ -73,14 +73,27 @@ exports.handler = async function (context, event, callback) {
     console.log("---------------------------Hitting conference-events--------------------------");
     const client = context.getTwilioClient();
 
-    let payload = event[0].data.payload;
-    let publisher_metadata = event[0].data.publisher_metadata;
+    // Guard: some event types (e.g. heartbeats, delivery receipts) arrive without the
+    // standard data.payload structure.  Without this check, payload.task_sid throws
+    // "Cannot read properties of undefined (reading 'task_sid')".
+    const eventData = event[0]?.data;
+    if (!eventData) {
+        console.log('[conference-events] event[0].data is missing — skipping');
+        return callback(null, {});
+    }
+
+    let payload = eventData.payload;
+    let publisher_metadata = eventData.publisher_metadata;
 
     if (typeof publisher_metadata === 'string') {
         publisher_metadata = JSON.parse(publisher_metadata);
     }
     if (typeof payload === 'string') {
         payload = JSON.parse(payload);
+    }
+    if (!payload) {
+        console.log('[conference-events] payload is undefined — skipping event:', event[0]?.data?.name);
+        return callback(null, {});
     }
     let taskSid = payload.task_sid;
     console.log("TaskSID in payload", taskSid);
@@ -342,6 +355,34 @@ exports.handler = async function (context, event, callback) {
             await new Promise(resolve => setTimeout(resolve, 500));
             let updateTaskAttr = await updateCurrentAgentCallSID(client, context, taskSid, workerSid, workerName, agentAttributes, agentCallSID)
             console.log("updateTaskAttr", updateTaskAttr);
+
+            // For outbound callback calls, store the customer call SID on the callback task
+            // so that outbound-stream-start.js (AMD callback handler) can locate the callback
+            // task by customer call SID when Twilio reports the AMD/call-status result.
+            // customerCallSID is conference.participants.customer — only present after the
+            // customer joins the conference (i.e. they picked up).  If it's null here the
+            // customer hasn't answered yet; outbound-stream-start.js handles that via the
+            // no-answer / call-status webhook path instead.
+            if (taskAttributes.callbackTaskSid && customerCallSID) {
+                try {
+                    const cbTask = await client.taskrouter
+                        .workspaces(context.TWILIO_WORKSPACE_SID)
+                        .tasks(taskAttributes.callbackTaskSid)
+                        .fetch();
+                    const cbAttrs = JSON.parse(cbTask.attributes || '{}');
+                    if (!cbAttrs.customerCallSid) {
+                        cbAttrs.customerCallSid = customerCallSID;
+                        await client.taskrouter
+                            .workspaces(context.TWILIO_WORKSPACE_SID)
+                            .tasks(taskAttributes.callbackTaskSid)
+                            .update({ attributes: JSON.stringify(cbAttrs) });
+                        console.log(`[conference-events] stored customerCallSid=${customerCallSID} on callback task ${taskAttributes.callbackTaskSid}`);
+                    }
+                } catch (cbErr) {
+                    console.error('[conference-events] failed to update callback task with customerCallSid:', cbErr.message);
+                }
+            }
+
             // agent_accepted uses agent headers (agentCallSID token)
             const response = await axios.post(url, data, { headers: agentHeaders, timeout: 5000 });
             console.log("response.data:", data.event, ":", response.data);
