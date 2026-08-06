@@ -279,22 +279,30 @@ const SUMMARY_KEY_PATTERNS = {
 
 function parseSummaryFields(text) {
   if (!text) return null;
-  const result = {};
-  let matched = false;
-  for (let i = 0; i < SUMMARY_KEYS.length; i++) {
-    const key = SUMMARY_KEYS[i];
-    const keyPat = SUMMARY_KEY_PATTERNS[key];
-    // Stop at ANY other section header — this makes parsing order-independent
-    // so the sections can arrive in any order from the backend.
-    const allOtherPats = Object.entries(SUMMARY_KEY_PATTERNS)
-      .filter(([k]) => k !== key)
-      .map(([, p]) => p)
-      .join('|');
-    const pattern = new RegExp(`${keyPat}\\s+(.+?)(?=\\s+(?:${allOtherPats})|$)`, 'is');
-    const m = text.match(pattern);
-    if (m) { result[key] = m[1].trim(); matched = true; }
+
+  // Find where each section header appears in the text, then slice between
+  // consecutive headers. Using lookaheads to terminate captures caused sections
+  // whose content contained words like "action" or "resolution" to be truncated.
+  const positions = [];
+  for (const key of SUMMARY_KEYS) {
+    const pat = new RegExp(SUMMARY_KEY_PATTERNS[key], 'i');
+    const m = pat.exec(text);
+    if (m) positions.push({ key, start: m.index, headerEnd: m.index + m[0].length });
   }
-  return matched ? result : null;
+
+  if (positions.length === 0) return null;
+
+  positions.sort((a, b) => a.start - b.start);
+
+  const result = {};
+  for (let i = 0; i < positions.length; i++) {
+    const { key, headerEnd } = positions[i];
+    const nextStart = i + 1 < positions.length ? positions[i + 1].start : text.length;
+    const content = text.slice(headerEnd, nextStart).trim();
+    if (content) result[key] = content;
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function CopyableValue({ value, placeholder }) {

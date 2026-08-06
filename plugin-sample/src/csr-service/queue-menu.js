@@ -30,18 +30,27 @@ const getSyncMapData = async (client,synMapServiceId,syncPrefs, syncDataCallback
         });
     };
 async function getCallbackWindowOpen(context,endOfDayTimestamp,startOfDayTimestamp,queueStartTimestamp,callbackWindowEnabled) {
-    console.log("inside the getCallbackWindowOpen function")
+    console.log("[cbWindow] endOfDayTimestamp:", endOfDayTimestamp, "startOfDayTimestamp:", startOfDayTimestamp);
     if (endOfDayTimestamp > 0) {
-        let nowTime = new Date().getTime();
-        // console.log((endOfDayTimestamp - parseInt(context.CALLBACK_TIME_BEFORE_EOD)));
-        // console.log((startOfDayTimestamp + parseInt(context.CALLBACK_TIME_AFTER_SOD)));
-        if (nowTime < (endOfDayTimestamp - parseInt(context.CALLBACK_TIME_BEFORE_EOD)) && nowTime > (startOfDayTimestamp + parseInt(context.CALLBACK_TIME_AFTER_SOD))) {
-            if (nowTime > (queueStartTimestamp + parseInt(context.CALLBACK_QUEUE_TIME))) {
-                callbackWindowEnabled = true;
-            }
+        // Operating-hours window check only.
+        // Queue wait time is NOT checked here — mainProcess already gates on callerWaitMins >= 3.
+        const nowTime = new Date().getTime();
+        const beforeEodCutoff = parseInt(context.CALLBACK_TIME_BEFORE_EOD) || 0;
+        const afterSodCutoff  = parseInt(context.CALLBACK_TIME_AFTER_SOD)  || 0;
+        const beforeEod = nowTime < (endOfDayTimestamp - beforeEodCutoff);
+        const afterSod  = nowTime > (startOfDayTimestamp + afterSodCutoff);
+        console.log("[cbWindow] nowTime:", nowTime,
+            "| beforeEod:", beforeEod, "(cutoff:", beforeEodCutoff, ")",
+            "| afterSod:", afterSod,  "(cutoff:", afterSodCutoff, ")");
+        if (beforeEod && afterSod) {
+            callbackWindowEnabled = true;
         }
+    } else {
+        // endOfDayTime not supplied — no operating-hours restriction, window is open
+        console.log("[cbWindow] no endOfDayTime supplied — window open by default");
+        callbackWindowEnabled = true;
     }
-    //console.log("getCallbackWindowOpen - callbackWindowEnabled",callbackWindowEnabled)
+    console.log("[cbWindow] result:", callbackWindowEnabled);
     return callbackWindowEnabled;
 };
 

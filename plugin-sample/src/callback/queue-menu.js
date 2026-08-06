@@ -227,16 +227,27 @@ exports.handler = async function(context, event, callback) {
         }
         
         let callbackEnabled = false;
+        const nowTime = new Date().getTime();
+        const queueWaitMs = parseInt(context.CALLBACK_QUEUE_TIME) || 0;
+        const callerWaitedLongEnough = nowTime > (queueStartTimestamp + queueWaitMs);
+
         if ( endOfDayTimestamp > 0 ) {
-          let nowTime = new Date().getTime();
-          //console.log((endOfDayTimestamp-parseInt(context.CALLBACK_TIME_BEFORE_EOD)));
-          //console.log((startOfDayTimestamp+parseInt(context.CALLBACK_TIME_AFTER_SOD)));
-          if ( nowTime < (endOfDayTimestamp-parseInt(context.CALLBACK_TIME_BEFORE_EOD)) && nowTime > (startOfDayTimestamp+parseInt(context.CALLBACK_TIME_AFTER_SOD) ) ) {
-            if ( nowTime > (queueStartTimestamp+parseInt(context.CALLBACK_QUEUE_TIME)) ) {
-              callbackEnabled = true;
-            }
+          // Full time-window check: only offer callback within operating hours
+          const beforeEod = nowTime < (endOfDayTimestamp - (parseInt(context.CALLBACK_TIME_BEFORE_EOD) || 0));
+          const afterSod  = nowTime > (startOfDayTimestamp + (parseInt(context.CALLBACK_TIME_AFTER_SOD) || 0));
+          if ( beforeEod && afterSod && callerWaitedLongEnough ) {
+            callbackEnabled = true;
+          }
+        } else {
+          // endOfDayTime not supplied by Studio flow — skip window check, use queue wait only
+          if ( callerWaitedLongEnough ) {
+            callbackEnabled = true;
           }
         }
+        console.log('[queue-menu] callbackEnabled:', callbackEnabled,
+          '| endOfDayTimestamp:', endOfDayTimestamp,
+          '| waited:', Math.round((nowTime - queueStartTimestamp)/1000) + 's',
+          '| threshold:', Math.round(queueWaitMs/1000) + 's');
         
         if ( callbackEnabled ) { 
           let gatherCallbackMenu = twiml.gather(callbackMenuOptions);
