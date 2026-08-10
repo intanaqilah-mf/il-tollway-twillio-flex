@@ -198,17 +198,76 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     try { flex.TaskListButtons.Content.remove('wrapup'); } catch {}
     try { flex.TaskCanvasHeader.Content.remove('actions'); } catch {}
 
-    // Auto-complete tasks when they enter wrap-up (triggered by either party hanging up).
-    // The 3-second delay gives SAICPanel time to submit the summary first.
+    // ── Single Redux subscriber handles two jobs ──────────────────────────────
+    //
+    // 1. STICKY CALL CANVAS  — whenever a voice task is active but the canvas
+    //    is not showing (flex.view.selectedTaskSid is empty), click the task
+    //    list row to flip the task-list component into canvas-view.
+    //
+    //    WHY DOM CLICK (not SelectTask):
+    //    The Flex TaskList component uses internal React state to toggle between
+    //    list-view and canvas-view.  SelectTask only updates Redux; it does NOT
+    //    trigger the component's internal transition.  A DOM click on the task
+    //    row is the only reliable trigger (confirmed: class = Twilio-TaskListBaseItem).
+    //
+    //    WHY REACTIVE (not one-shot):
+    //    Flex's conference setup ("endConferenceOnExit") briefly removes the
+    //    task from the Redux store during call initialisation, which collapses
+    //    the canvas.  A one-shot click misses the re-open.  Instead we watch
+    //    the store on every update: if the task is active but nothing is
+    //    selected, we click again.  The `clickCooldown` flag (400 ms) prevents
+    //    rapid-fire clicks during bursts of store updates.
+    //
+    // 2. AUTO-COMPLETE  — tasks that reach 'wrapping' are completed after 10 s
+    //    so SAICPanel has time to submit the post-call summary first.
+    // ─────────────────────────────────────────────────────────────────────────
     const autoCompleted = new Set();
-    Manager.getInstance().store.subscribe(() => {
-      const tasks = Manager.getInstance().store.getState()?.flex?.worker?.tasks;
+    let clickCooldown = false;
+
+    manager.store.subscribe(() => {
+      const state = manager.store.getState()?.flex;
+      const tasks = state?.worker?.tasks;
       if (!tasks) return;
+
+      // ── job 1: sticky call canvas ─────────────────────────────────────────
+      let activeSid = null;
+      for (const task of tasks.values()) {
+        if (['assigned', 'accepted'].includes(task.status)) {
+          activeSid = task.taskSid || task.sid;
+          break;
+        }
+      }
+
+      // Click when: task is active AND canvas not currently selected AND no
+      // cooldown.  After the click, Flex sets selectedTaskSid so subsequent
+      // updates find it truthy and skip the click.  If conference setup later
+      // clears selectedTaskSid, the next store update re-clicks automatically
+      // once the cooldown has expired — this is the "sticky" behaviour.
+      if (activeSid && !clickCooldown && !state?.view?.selectedTaskSid) {
+        clickCooldown = true;
+        setTimeout(() => { clickCooldown = false; }, 400);
+
+        setTimeout(() => {
+          const el =
+            document.querySelector('.Twilio-TaskListBaseItem') ||
+            document.querySelector('.Twilio-TaskListItem') ||
+            document.querySelector('[class*="TaskListBaseItem"]') ||
+            document.querySelector('[class*="TaskListItem"]:not([class*="WrapUp"])') ||
+            document.querySelector('[data-testid="task-list-item"]');
+
+          if (el) {
+            console.log('[IsthaAgentAssistPlugin] Sticky-click task row → Call|Info:', el.className);
+            el.click();
+          }
+        }, 150); // let the task row finish rendering
+      }
+
+      // ── job 2: auto-complete on wrap-up ───────────────────────────────────
       for (const task of tasks.values()) {
         const sid = task.taskSid || task.sid;
         if (task.status === 'wrapping' && !autoCompleted.has(sid)) {
           autoCompleted.add(sid);
-          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 7s');
+          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 10 s');
           setTimeout(() => {
             Actions.invokeAction('CompleteTask', { task })
               .catch((e) => console.error('[IsthaAgentAssistPlugin] CompleteTask failed:', e));

@@ -25,6 +25,7 @@ const EMPTY_STATE = {
   transferSummary: null,
   connected: false,
   error: null,
+  supervisorBarged: false,  // true when supervisor barge-in is detected — transcripts stop
 };
 
 // One WebSocket per task SID, shared across ALL hook instances (SAICPanel,
@@ -160,6 +161,12 @@ function openConnection(taskSid) {
         };
         break;
       }
+      case 'supervisor_barged':
+        // Relay sends this when a supervisor barge-in is detected.
+        // Transcripts and post-call summary are suppressed from this point on.
+        console.log('[AA] ✅ supervisor_barged received — transcripts stopped by relay');
+        entry.state.supervisorBarged = true;
+        break;
       default:
         console.log('[AA] unknown message type:', data.type, data);
         break;

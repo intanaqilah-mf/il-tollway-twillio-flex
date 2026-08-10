@@ -256,7 +256,7 @@ const LiveTranscript = ({ task: taskProp }) => {
     } catch { return undefined; }
   }, [taskProp]);
 
-  const { transcript: wsTranscript, postCall, connected, error } = useAgentAssistWebSocket(task);
+  const { transcript: wsTranscript, postCall, connected, error, supervisorBarged } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
   const callEnded = !loading && !task;
 
@@ -336,6 +336,29 @@ const LiveTranscript = ({ task: taskProp }) => {
               </div>
             );
           })
+        )}
+
+        {/* Supervisor barge-in banner — shown when relay stops transcripts */}
+        {supervisorBarged && (
+          <div style={{
+            margin: '4px 0',
+            padding: '12px 14px',
+            background: '#fff8e1',
+            border: '1px solid #f0a500',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            fontSize: '12px',
+            color: '#7a5000',
+            lineHeight: '1.5',
+          }}>
+            <span style={{ fontSize: '16px', flexShrink: 0 }}>⚠️</span>
+            <div>
+              <div style={{ fontWeight: '700', marginBottom: '2px' }}>Supervisor has joined the call</div>
+              <div>Live transcript and post-call summary have been paused for this call.</div>
+            </div>
+          </div>
         )}
 
         {callEnded && (
