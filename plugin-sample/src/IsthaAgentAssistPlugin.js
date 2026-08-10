@@ -101,7 +101,8 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       button[aria-label="Transfer"],
       button[aria-label="Open transfer directory"],
       button[title="Transfer"],
-      button[title="Open transfer directory"] {
+      button[title="Open transfer directory"],
+      button[title="Add supervisor to call"] {
         display: none !important;
       }
     `;
