@@ -198,16 +198,28 @@ function formatDuration(seconds) {
 }
 
 /**
- * Redacts payment card PII from a transcript string.
+ * Redacts PII from a transcript string.
  * Covers:
  *   - Credit/debit card numbers (Visa/MC/Discover 4×4, Amex 4-6-5, or 13–19 raw digits)
- *   - Expiry dates  (MM/YY, MM/YYYY, MM-YY, MM-YYYY)
+ *   - Card expiry dates  (MM/YY, MM/YYYY, MM-YY, MM-YYYY)
  *   - CVV/CVC/security codes (keyword + 3–4 digits)
+ *   - SSN: XXX-XX-XXXX formatted or keyword-labeled
+ *   - ITIN: 9XX-7X/8X/9X-XXXX (IRS individual taxpayer ID)
+ *   - Military ID / DoD ID: keyword-contextual 10-digit number
+ *   - Driver's License: keyword-contextual, all US state formats
+ *   - Passport Number: US format (letter + 8 digits), keyword or standalone
+ *   - Date of Birth: numeric MM/DD/YYYY, written month forms, keyword-labeled
+ *   - Home Address: street-number + name + street-type suffix
+ *   - ZIP Code: ZIP+4 standalone, or 5-digit with keyword context
+ *
+ * Ordering matters — more specific patterns run before broader ones
+ * (e.g. DOB before card-expiry to prevent partial matches on MM/DD/YYYY).
  */
 function redactPII(text) {
   if (!text) return text;
   let out = text;
 
+  // ── Credit / Debit Card ─────────────────────────────────────────────────
   // Standard 4×4 card format: 4532 1234 5678 9012 or 4532-1234-5678-9012
   out = out.replace(/\b\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{3,4}\b/g, '[REDACTED]');
 
@@ -217,15 +229,77 @@ function redactPII(text) {
   // Raw continuous card digits (13–19 digits not already replaced)
   out = out.replace(/\b\d{13,19}\b/g, '[REDACTED]');
 
+  // ── Date of Birth (before card expiry to prevent MM/DD overlap) ─────────
+  // Numeric: MM/DD/YYYY or MM-DD-YYYY (4-digit year anchored to 19xx / 20xx)
+  out = out.replace(/\b(0[1-9]|1[0-2])[\/\-](0[1-9]|[12]\d|3[01])[\/\-](19|20)\d{2}\b/g, '[REDACTED]');
+
+  // Written: "January 15, 1990" or "Jan 15 1990"
+  out = out.replace(
+    /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+(19|20)\d{2}\b/gi,
+    '[REDACTED]'
+  );
+  // Written reversed: "15 January 1990"
+  out = out.replace(
+    /\b\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(19|20)\d{2}\b/gi,
+    '[REDACTED]'
+  );
+  // Keyword-labeled: "DOB: 01/15/1990" or "date of birth: January 15, 1990"
+  out = out.replace(
+    /\b(?:dob|date\s+of\s+birth|birth(?:day|date)?)\s*[:\-]?\s*(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{2,4})\b/gi,
+    '[REDACTED]'
+  );
+
+  // ── Card Expiry & CVV ────────────────────────────────────────────────────
   // Expiry date: MM/YY, MM/YYYY, MM-YY, MM-YYYY
   out = out.replace(/\b(0[1-9]|1[0-2])[\/\-]\d{2}(\d{2})?\b/g, '[REDACTED]');
 
   // CVV / CVC / security code followed by 3–4 digits
   out = out.replace(/\b(?:cvv|cvc|security\s+code)\s*[:\-]?\s*\d{3,4}\b/gi, '[REDACTED]');
 
-  // SSN: XXX-XX-XXXX, XXX XX XXXX, or 9 raw digits
+  // ── SSN ──────────────────────────────────────────────────────────────────
+  // Formatted: XXX-XX-XXXX or XXX XX XXXX
   out = out.replace(/\b\d{3}[\s\-]\d{2}[\s\-]\d{4}\b/g, '[REDACTED]');
+  // Keyword-labeled: "ssn: 123456789"
   out = out.replace(/\b(?:ssn|social\s+security(?:\s+number)?)\s*[:\-]?\s*\d{9}\b/gi, '[REDACTED]');
+
+  // ── ITIN (Individual Taxpayer Identification Number) ─────────────────────
+  // Structured: 9XX-7X-XXXX / 9XX-8X-XXXX / 9XX-9[0-3]-XXXX
+  out = out.replace(/\b9\d{2}[\s\-](?:7[0-9]|8[0-9]|9[0-3])[\s\-]\d{4}\b/g, '[REDACTED]');
+  // Keyword-labeled: "itin: 912345678"
+  out = out.replace(/\b(?:itin|individual\s+taxpayer\s+id(?:entification)?(?:\s+number)?)\s*[:\-]?\s*9\d{8}\b/gi, '[REDACTED]');
+
+  // ── Military ID / DoD ID ─────────────────────────────────────────────────
+  // 10-digit DoD ID, keyword-only (raw 10 digits too broad to match standalone)
+  out = out.replace(/\b(?:military\s+id|dod\s+(?:id|identification)|service(?:\s+member)?\s+id)\s*[:\-]?\s*\d{10}\b/gi, '[REDACTED]');
+
+  // ── Driver's License Number ──────────────────────────────────────────────
+  // Keyword-contextual — covers all 50-state formats (letter+digit combos vary)
+  out = out.replace(
+    /\b(?:driver(?:'?s)?\s+licen[sc]e(?:\s+(?:number|no\.?|#))?|d\.?l\.?n?)\s*[:\-]?\s*[A-Z0-9]{6,12}\b/gi,
+    '[REDACTED]'
+  );
+
+  // ── Passport Number ──────────────────────────────────────────────────────
+  // US passport: single capital letter + exactly 8 digits (e.g. A12345678)
+  // Keyword-contextual first (broader format), then standalone specific format
+  out = out.replace(/\b(?:passport(?:\s+(?:number|no\.?|#))?)\s*[:\-]?\s*[A-Z0-9]{6,9}\b/gi, '[REDACTED]');
+  // Standalone: capital letter + 8 digits — specific enough to catch without keyword
+  out = out.replace(/\b[A-Z]\d{8}\b/g, '[REDACTED]');
+
+  // ── Home Address ─────────────────────────────────────────────────────────
+  // Street number + 1–4 word name + street type suffix
+  out = out.replace(
+    /\b\d{1,5}\s+(?:[A-Za-z]+\s+){1,4}(?:Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Drive|Dr\.?|Road|Rd\.?|Lane|Ln\.?|Court|Ct\.?|Way|Place|Pl\.?|Terrace|Terr?\.?|Parkway|Pkwy\.?|Highway|Hwy\.?|Circle|Cir\.?|Loop)\b/gi,
+    '[REDACTED]'
+  );
+  // Keyword-labeled address: catches "address: 123 Main St, City, ST 12345"
+  out = out.replace(/\b(?:(?:home|mailing|billing|current|street)\s+)?address\s*[:\-]\s*[^\n]+/gi, '[REDACTED]');
+
+  // ── ZIP Code ─────────────────────────────────────────────────────────────
+  // ZIP+4 standalone: 12345-6789 (specific enough to catch without keyword)
+  out = out.replace(/\b\d{5}[-]\d{4}\b/g, '[REDACTED]');
+  // Keyword-labeled 5-digit ZIP: "zip code: 90210"
+  out = out.replace(/\b(?:zip\s*(?:code)?|postal\s*(?:code)?)\s*[:\-]?\s*\d{5}(?:[-\s]\d{4})?\b/gi, '[REDACTED]');
 
   return out;
 }
