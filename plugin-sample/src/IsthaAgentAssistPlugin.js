@@ -8,6 +8,50 @@ import AddSupervisorButton from './components/SupervisorJoin/AddSupervisorButton
 
 const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
 
+// ── Session-conflict guard ────────────────────────────────────────────────────
+//
+// WHY module-level (not inside init):
+//   Flex detects duplicate sessions during its OWN boot sequence — before
+//   plugin init() is ever called.  If we wait until init(), the "You're logged
+//   in elsewhere" dialog is already on screen and the 10-second countdown has
+//   started.  Running at module level means the guard is active the moment
+//   this JS file is parsed.
+//
+// THREE-LAYER detection strategy (most to least latency-sensitive):
+//   1. Immediate call   — catches the button if it's already in the DOM.
+//   2. MutationObserver — fires on every DOM mutation (fast path, ~0 ms lag).
+//   3. setInterval 300ms— safety net: MutationObserver fires when the React
+//                         tree commits but the button may not be painted yet.
+//
+// We only click "Log In Here" (new/duplicate tab dialog).
+// We intentionally skip "Log in" (original-tab "no longer active" screen)
+// to avoid an infinite login loop between the two tabs.
+// ─────────────────────────────────────────────────────────────────────────────
+const _clickLogInHere = () => {
+  const btn = Array.from(document.querySelectorAll('button')).find(
+    (b) => (b.innerText || b.textContent || '').trim() === 'Log In Here'
+  );
+  if (btn) {
+    console.log('[IsthaAgentAssistPlugin][Session Guard] "You\'re logged in elsewhere" detected — auto-clicking "Log In Here"');
+    btn.click();
+  }
+};
+
+// Layer 1: immediate
+_clickLogInHere();
+
+// Layer 2: MutationObserver
+new MutationObserver(_clickLogInHere).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
+
+// Layer 3: polling fallback (querySelectorAll is a no-op when button absent)
+setInterval(_clickLogInHere, 300);
+
+console.log('[IsthaAgentAssistPlugin][Session Guard] Session conflict guard active');
+// ─────────────────────────────────────────────────────────────────────────────
+
 // SupervisorJoinModal uses position:fixed so it renders over the whole page
 // regardless of where in the tree it lives. Placing it here keeps it
 // co-located with the panel it relates to.
@@ -193,6 +237,9 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       return original(payload);
     });
     // ─────────────────────────────────────────────────────────────────────────
+
+    // Session-conflict guard is set up at module level above (not here)
+    // so it runs before init() — see _clickLogInHere at the top of this file.
 
     // Remove the Complete button from the UI so agents cannot manually complete tasks
     try { flex.TaskListButtons.Content.remove('wrapup'); } catch {}

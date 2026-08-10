@@ -520,7 +520,15 @@ const SAICPanel = ({ task: taskProp }) => {
   const callerName = preCall?.callerName || attrs.callerName || attrs.name || null;
   const accountName = preCall?.accountName || attrs.accountName || null;
 
-  const authStatus = preCall?.authenticationStatus || attrs.authenticationStatus || null;
+  // transferSummary arrives via WebSocket 'transfer_summary' — on takeover the relay
+  // delivers pre-call context here because the new session has no pre_call_summary yet.
+  // Use it as a tertiary fallback (after wsPreCall and task attrs) for every pre-call field.
+
+  const authStatus =
+    preCall?.authenticationStatus ||
+    attrs.authenticationStatus ||
+    transferSummary?.authenticationStatus ||
+    null;
   const isVerified = authStatus === 'AUTHENTICATED' || authStatus === 'Verified' || authStatus === 'true';
   const authDotColor = authStatus
     ? (isVerified ? colors.authGreen : colors.sentimentRed)
@@ -536,17 +544,27 @@ const SAICPanel = ({ task: taskProp }) => {
     preCall?.lastOpenIntent ||
     attrs.lastOpenIntent ||
     attrs.intentIdentified ||
+    transferSummary?.lastOpenIntent ||
     null;
   const intents = intentVal ? [intentVal] : [];
 
-  const statedReason = preCall?.statedReason || attrs.statedReason || null;
-  const ivrPath = preCall?.IVRPathSummary || attrs.IVRPathSummary || null;
-
-  // transferSummary arrives via WebSocket 'transfer_summary' message pushed by the relay
-  // after CSR1's summary is ready. Display-only — statedReason in the payload is NOT affected.
+  const statedReason =
+    preCall?.statedReason ||
+    attrs.statedReason ||
+    transferSummary?.statedReason ||
+    null;
+  const ivrPath =
+    preCall?.IVRPathSummary ||
+    attrs.IVRPathSummary ||
+    transferSummary?.IVRPathSummary ||
+    null;
 
   // Pre-call sentiment — static from IVR handoff, shown in pre-call section
-  const preCallSentiment = preCall?.sentimentAnalysis || attrs.sentimentAnalysis || null;
+  const preCallSentiment =
+    preCall?.sentimentAnalysis ||
+    attrs.sentimentAnalysis ||
+    transferSummary?.sentimentAnalysis ||
+    null;
 
   // Live sentiment — dynamic, updated during the call, shown in post-call section
   const sentimentLabel = sentiment?.sentimentLabel || null;
@@ -691,7 +709,10 @@ const SAICPanel = ({ task: taskProp }) => {
         </div>
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Stated Reason</div>
-          {transferSummary ? (
+          {/* Only show the "Previous Agent" block when there is actual transfer text.
+              An empty transferSummary (relay sends null text for new/CSR2 calls) should
+              fall through to the plain StatedReason view. */}
+          {transferSummary && (transferSummary.text || transferSummary.sections) ? (
             <div>
               <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>Previous Agent</div>
               {transferSummary.sections ? (

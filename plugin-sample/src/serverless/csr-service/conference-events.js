@@ -44,6 +44,69 @@ async function fetchLatestTaskAttributes(client, context, taskSid) {
     }
 }
 
+// ── Pre-call attribute inheritance for CSR2 ──────────────────────────────────
+//
+// When CSR1 warm-transfers to CSR2, Twilio creates a brand-new TaskRouter task
+// for CSR2.  That task only carries standard Twilio call attributes (from, to,
+// conference, …); the IVR / pre-call fields (authenticationStatus, lastOpenIntent,
+// IVRPathSummary, statedReason, sentimentAnalysis) are NOT copied automatically.
+//
+// This helper searches for another active task that shares the same customer
+// call SID — that is CSR1's original task — and returns its pre-call fields so
+// the conference-events handler can graft them onto CSR2's new task before
+// forwarding to the relay.
+// ─────────────────────────────────────────────────────────────────────────────
+async function fetchPreCallAttrsFromOriginalTask(client, context, customerCallSID, excludeTaskSid) {
+    if (!customerCallSID) return null;
+    try {
+        // Fetch recent tasks (assigned / wrapping) — CSR1's task is likely still wrapping
+        const tasks = await client.taskrouter.v1
+            .workspaces(context.TWILIO_WORKSPACE_SID)
+            .tasks.list({ limit: 20 });
+
+        for (const t of tasks) {
+            if (t.sid === excludeTaskSid) continue;
+
+            let attrs;
+            try { attrs = JSON.parse(t.attributes || '{}'); } catch { continue; }
+
+            // Match on customer call SID stored in either location
+            const taskCustomerSid =
+                attrs.conversations?.conversation_attribute_1 ||
+                attrs.conference?.participants?.customer ||
+                null;
+
+            if (taskCustomerSid !== customerCallSID) continue;
+
+            // Only return if the matched task actually has pre-call data
+            const hasData =
+                attrs.authenticationStatus ||
+                attrs.lastOpenIntent ||
+                attrs.IVRPathSummary ||
+                attrs.statedReason ||
+                attrs.sentimentAnalysis;
+
+            if (!hasData) continue;
+
+            console.log(`[fetchPreCallAttrs] ✅ Found original task ${t.sid} with pre-call data`);
+            return {
+                authenticationStatus: attrs.authenticationStatus || null,
+                lastOpenIntent:       attrs.lastOpenIntent       || null,
+                intentIdentified:     attrs.intentIdentified     || null,
+                IVRPathSummary:       attrs.IVRPathSummary       || null,
+                statedReason:         attrs.statedReason         || null,
+                sentimentAnalysis:    attrs.sentimentAnalysis    || null,
+            };
+        }
+
+        console.log('[fetchPreCallAttrs] No original task with pre-call data found for customer SID:', customerCallSID);
+        return null;
+    } catch (err) {
+        console.error('[fetchPreCallAttrs] Error searching for original task:', err.message);
+        return null;
+    }
+}
+
 function getLatestAgentDetails(taskAttributes) {
     const agentCallSids = taskAttributes?.agentCallSids || {};
 
@@ -302,6 +365,54 @@ exports.handler = async function (context, event, callback) {
         } else {
             console.log("new call");
 
+            // ── CSR2 pre-call inheritance ─────────────────────────────────────
+            // If the new task has no pre-call IVR data, this is likely CSR2's task
+            // created by Twilio during a warm transfer from CSR1.  Search for the
+            // original task (CSR1's) via the shared customer call SID and copy
+            // its pre-call attributes so the relay and UI receive the correct context.
+            // ─────────────────────────────────────────────────────────────────────
+            const hasPreCallData =
+                taskAttributes.authenticationStatus ||
+                taskAttributes.lastOpenIntent ||
+                taskAttributes.IVRPathSummary ||
+                taskAttributes.statedReason ||
+                taskAttributes.sentimentAnalysis;
+
+            if (!hasPreCallData && customerCallSID) {
+                console.log('[ReservationAccepted] Pre-call data missing on new task — searching for original CSR1 task');
+                const inherited = await fetchPreCallAttrsFromOriginalTask(
+                    client, context, customerCallSID, taskSid
+                );
+                if (inherited) {
+                    console.log('[ReservationAccepted] ✅ Inherited pre-call attrs from CSR1 task:', JSON.stringify(inherited));
+                    // Merge into local taskAttributes so stream params below pick them up
+                    Object.assign(taskAttributes, inherited);
+                    // Also patch the already-built data object
+                    Object.assign(data, {
+                        authenticationStatus: inherited.authenticationStatus,
+                        intentIdentified:     inherited.intentIdentified,
+                        IVRPathSummary:       inherited.IVRPathSummary,
+                        sentimentAnalysis:    inherited.sentimentAnalysis,
+                        statedReason:         inherited.statedReason,
+                        lastOpenIntent:       inherited.lastOpenIntent,
+                    });
+                    // Persist to TaskRouter so TaskWrapup and future events also have the data
+                    try {
+                        const freshAttrs = await fetchLatestTaskAttributes(client, context, taskSid);
+                        await client.taskrouter.v1
+                            .workspaces(context.TWILIO_WORKSPACE_SID)
+                            .tasks(taskSid)
+                            .update({ attributes: JSON.stringify({ ...freshAttrs, ...inherited }) });
+                        console.log('[ReservationAccepted] ✅ Pre-call attrs persisted to CSR2 task in TaskRouter');
+                    } catch (persistErr) {
+                        console.error('[ReservationAccepted] Failed to persist pre-call attrs to task:', persistErr.message);
+                    }
+                } else {
+                    console.log('[ReservationAccepted] No original task found — proceeding with empty pre-call data');
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
+
             let agentResult;
             try {
                 agentResult = await getToken(agentCallSID);
@@ -455,20 +566,30 @@ exports.handler = async function (context, event, callback) {
         console.log("Email:", latestWorkerEmail);
         console.log("latestFullName:", latestFullName);
 
+        // Prefer latestTaskAttributes (freshly fetched) over the stale payload
+        // taskAttributes — the wrapup payload is often a snapshot from before the
+        // task's IPASS/agentAssist attributes were written, so fields like
+        // authenticationStatus, intentIdentified, etc. show up as undefined there
+        // even though they are present on the live task record.
+        const ta = latestTaskAttributes;
+        const tap = taskAttributes; // payload fallback only
+
         data = {
             event: eventName,
             callSid: wrapupAgentCallSID,
             workerFriendlyName: latestWorkerName,
-            authenticationStatus: taskAttributes.authenticationStatus,
-            intentIdentified: taskAttributes.intentIdentified,
-            IVRPathSummary: taskAttributes.IVRPathSummary,
-            sentimentAnalysis: taskAttributes.sentimentAnalysis,
-            statedReason: taskAttributes.statedReason,
-            agentFullName: latestFullName,
-            agentEmailID: latestWorkerEmail,
-            isAgentAssistEnabled: taskAttributes.isAgentAssistEnabled,
-            callersPhoneNumber: taskAttributes.from,
-            lastOpenIntent: taskAttributes.lastOpenIntent
+            authenticationStatus: ta.authenticationStatus ?? tap.authenticationStatus,
+            intentIdentified:     ta.intentIdentified     ?? tap.intentIdentified,
+            IVRPathSummary:       ta.IVRPathSummary       ?? tap.IVRPathSummary,
+            sentimentAnalysis:    ta.sentimentAnalysis    ?? tap.sentimentAnalysis,
+            statedReason:         ta.statedReason         ?? tap.statedReason,
+            agentFullName:        latestFullName,
+            agentEmailID:         latestWorkerEmail,
+            isAgentAssistEnabled: ta.isAgentAssistEnabled ?? tap.isAgentAssistEnabled,
+            callersPhoneNumber:   ta.from                 ?? tap.from,
+            lastOpenIntent:       ta.lastOpenIntent        ?? tap.lastOpenIntent,
+            AccountNumber:        ta.AccountNumber         ?? tap.AccountNumber,
+            accountName:          ta.accountName           ?? tap.accountName,
         };
 
         console.log("data passing to the endpoint:", data);
@@ -550,11 +671,20 @@ exports.handler = async function (context, event, callback) {
         // IPASS_English_L_Q, IPASS_Spanish_L_Q, Violations_English_Q, etc.
         const queueName = payload.task_queue_name || payload.queue_name || '';
         const isTargetQueue = /ipass/i.test(queueName) || /violation/i.test(queueName);
-        if (!isTargetQueue) {
-            console.log("[TaskUpdated] skipping — not an IPASS/Violations queue. Queue:", queueName || '(empty)');
+        // When a supervisor takes over, Twilio moves the task from IPASS → Outbound
+        // BEFORE the plugin stamps monitoring_status='takeover', so by the time
+        // this TaskUpdated fires the queue name is already 'Outbound' — which would
+        // cause the check above to skip it.  Bypass the queue gate for takeover events.
+        const isTakeoverEvent = taskAttributes?.conversations?.monitoring_status === 'takeover';
+        if (!isTargetQueue && !isTakeoverEvent) {
+            console.log("[TaskUpdated] skipping — not an IPASS/Violations queue and not a takeover. Queue:", queueName || '(empty)');
             return callback(null, {});
         }
-        console.log("[TaskUpdated] queue matched:", queueName);
+        if (isTakeoverEvent && !isTargetQueue) {
+            console.log("[TaskUpdated] queue is", queueName, "but monitoring_status=takeover — bypassing queue gate");
+        } else {
+            console.log("[TaskUpdated] queue matched:", queueName);
+        }
 
         // Voice task check — non-voice tasks have no conference object
         const conferenceSid = taskAttributes?.conference?.sid;
@@ -628,6 +758,126 @@ exports.handler = async function (context, event, callback) {
         else if (supervisorParticipant.muted)  monitoringStatus = 'monitored';
         else                                   monitoringStatus = 'barge_in';
         console.log("[TaskUpdated] ✅ supervisor detected — callSid:", supervisorParticipant.callSid, "| mode:", monitoringStatus);
+
+        // ── TAKEOVER: replicate the transfer stream flow ──────────────────────
+        // When a supervisor takes over, a new task is created whose call_sid
+        // resolves to the CUSTOMER's call (customerCallSID).  The plugin will
+        // subscribe to the relay with that callSid, so we must register the new
+        // relay session under customerCallSID — not the supervisor's call leg —
+        // exactly like the transfer flow does for a new agent callSid.
+        const isTakeover = taskAttributes?.conversations?.monitoring_status === 'takeover';
+
+        if (isTakeover) {
+            console.log("[TaskUpdated] 🔄 Takeover detected — running transfer-style stream start");
+            const supervisorCallSid  = supervisorParticipant.callSid;
+            const originalAgentCallSid = agentCallSID;
+            // The takeover task's call_sid = customerCallSID; the plugin subscribes
+            // with this value, so the relay session must be keyed under it.
+            const takeoverSessionSid = customerCallSID;
+
+            if (!takeoverSessionSid) {
+                console.error("[TaskUpdated] ❌ no customerCallSID — cannot start takeover stream");
+                return callback(null, {});
+            }
+
+            // Step 1: close the original agent's relay session (same as transfer)
+            if (originalAgentCallSid) {
+                try {
+                    const originalToken = await getToken(originalAgentCallSid);
+                    await axios.post(url, {
+                        event: 'TaskTransferCompleted',
+                        callSid: originalAgentCallSid,
+                        workerFriendlyName: payload.worker_name,
+                        isAgentAssistEnabled: taskAttributes.isAgentAssistEnabled,
+                    }, {
+                        headers: { 'Authorization': `Bearer ${originalToken.streamToken}` },
+                        timeout: 5000,
+                    });
+                    console.log("[TaskUpdated] ✅ Original agent session closed (takeover)");
+                } catch (err) {
+                    console.error("[TaskUpdated] ❌ Failed to close original session:", err.response?.data || err.message);
+                }
+            }
+
+            // Step 2: open a new relay session keyed under takeoverSessionSid
+            let takeoverToken;
+            try {
+                takeoverToken = await getToken(takeoverSessionSid);
+            } catch (err) {
+                console.error("[TaskUpdated] failed to get takeover auth token:", err.message);
+                return callback(null, {});
+            }
+
+            // Step 3: start stream on supervisor's call leg, session registered
+            //         under takeoverSessionSid so the plugin's subscribe matches
+            try {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                console.log("[TaskUpdated] Starting stream — supervisor leg:", supervisorCallSid, "| session:", takeoverSessionSid);
+                const stream = await client.calls(supervisorCallSid).streams.create({
+                    url: agentAssist_Stream_URL,
+                    track: "both_tracks",
+                    "parameter1.name":  "token",
+                    "parameter1.value": takeoverToken.streamToken,
+                    "parameter2.name":  "CallSid",
+                    "parameter2.value": takeoverSessionSid,
+                    "parameter3.name":  "sessionType",
+                    "parameter3.value": "start",
+                    "parameter4.name":  "authenticationStatus",
+                    "parameter4.value": taskAttributes.authenticationStatus,
+                    "parameter5.name":  "intentIdentified",
+                    "parameter5.value": taskAttributes.intentIdentified,
+                    "parameter6.name":  "IVRPathSummary",
+                    "parameter6.value": taskAttributes.IVRPathSummary,
+                    "parameter7.name":  "sentimentAnalysis",
+                    "parameter7.value": taskAttributes.sentimentAnalysis,
+                    "parameter8.name":  "statedReason",
+                    "parameter8.value": taskAttributes.statedReason,
+                    "parameter9.name":  "trackSwap",
+                    "parameter9.value": "true",
+                    "parameter10.name": "customerCallSid",
+                    "parameter10.value": customerCallSID,
+                    "parameter11.name": "language",
+                    "parameter11.value": taskAttributes.language,
+                });
+                console.log("[TaskUpdated] ✅ Stream started for takeover | StreamSid:", stream.sid);
+            } catch (error) {
+                console.error("[TaskUpdated] ❌ Error starting takeover stream:", error.code || error.message);
+                return callback(null, {});
+            }
+
+            // Step 4: send agent_accepted so the relay activates the session and
+            //         the plugin receives pre-call data
+            try {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const takeoverData = {
+                    event: 'agent_accepted',
+                    callSid: takeoverSessionSid,
+                    workerFriendlyName: payload.worker_name,
+                    authenticationStatus: taskAttributes.authenticationStatus,
+                    intentIdentified: taskAttributes.intentIdentified,
+                    IVRPathSummary: taskAttributes.IVRPathSummary,
+                    sentimentAnalysis: taskAttributes.sentimentAnalysis,
+                    statedReason: taskAttributes.statedReason,
+                    agentFullName: agentAttributes?.full_name,
+                    agentEmailID: agentAttributes?.email,
+                    isAgentAssistEnabled: taskAttributes.isAgentAssistEnabled,
+                    callersPhoneNumber: taskAttributes.from,
+                    lastOpenIntent: taskAttributes.lastOpenIntent,
+                    AccountNumber: taskAttributes.AccountNumber,
+                    accountName: taskAttributes.accountName,
+                };
+                const relayResp = await axios.post(url, takeoverData, {
+                    headers: { 'Authorization': `Bearer ${takeoverToken.streamToken}` },
+                    timeout: 5000,
+                });
+                console.log("[TaskUpdated] ✅ agent_accepted sent for takeover:", relayResp.data);
+            } catch (err) {
+                console.error("[TaskUpdated] ❌ Failed to send agent_accepted for takeover:", err.response?.data || err.message);
+            }
+
+            return callback(null, {});
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // Notify relay so the plugin receives a supervisor_monitoring event
         if (!agentCallSID) {

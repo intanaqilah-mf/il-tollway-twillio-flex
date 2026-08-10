@@ -155,10 +155,65 @@ function openConnection(taskSid) {
       case 'transfer_summary': {
         const d = p.data || p;
         console.log('[AA] ✅ transfer_summary received, callSid:', d.callSid);
+
+        // Guard: relay sometimes sends transfer_summary with all null fields
+        // (e.g. for CSR2 new calls where no IVR context exists yet).
+        // If there is no actual transfer text AND no pre-call fields, skip
+        // entirely so we don't render an empty "Previous Agent" block or
+        // incorrectly backfill preCall with nulls.
+        const hasTransferContent =
+          d.transferSummary ||
+          d.transferSummarySections ||
+          d.authenticationStatus ||
+          d.lastOpenIntent ||
+          d.IVRPathSummary ||
+          d.statedReason ||
+          d.sentimentAnalysis;
+
+        if (!hasTransferContent) {
+          console.log('[AA] transfer_summary has no content — skipping (relay sent empty payload)');
+          break;
+        }
+
         entry.state.transferSummary = {
           text: d.transferSummary,
           sections: d.transferSummarySections || null,
+          // Pass pre-call fields through so SAICPanel can use them as a
+          // fallback when the takeover session has no pre_call_summary yet.
+          authenticationStatus: d.authenticationStatus || null,
+          lastOpenIntent:        d.lastOpenIntent        || null,
+          IVRPathSummary:        d.IVRPathSummary        || null,
+          statedReason:          d.statedReason          || null,
+          sentimentAnalysis:     d.sentimentAnalysis     || null,
+          callersPhoneNumber:    d.callersPhoneNumber    || null,
         };
+        // On takeover the relay creates a fresh session so pre_call_summary
+        // arrives empty; backfill preCall with whatever the transfer_summary
+        // carries so the pre-call section populates immediately.
+        // Only backfill from fields that actually have data (not null).
+        if (!entry.state.preCall?.authenticationStatus) {
+          const fill = {
+            authenticationStatus: d.authenticationStatus || null,
+            lastOpenIntent:        d.lastOpenIntent        || null,
+            IVRPathSummary:        d.IVRPathSummary        || null,
+            statedReason:          d.statedReason          || null,
+            sentimentAnalysis:     d.sentimentAnalysis     || null,
+            callersPhoneNumber:    d.callersPhoneNumber    || entry.state.preCall?.callersPhoneNumber || null,
+          };
+          // Only backfill if at least one meaningful field (beyond phone number) has data
+          const hasMeaningfulFill =
+            fill.authenticationStatus ||
+            fill.lastOpenIntent ||
+            fill.IVRPathSummary ||
+            fill.statedReason ||
+            fill.sentimentAnalysis;
+          if (hasMeaningfulFill) {
+            console.log('[AA] backfilling preCall from transfer_summary:', fill);
+            entry.state.preCall = { ...entry.state.preCall, ...fill };
+          } else {
+            console.log('[AA] transfer_summary has no pre-call fields to backfill — skipping preCall backfill');
+          }
+        }
         break;
       }
       case 'supervisor_barged':
