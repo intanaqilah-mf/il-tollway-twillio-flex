@@ -118,6 +118,8 @@ function openConnection(taskSid) {
           IVRPathSummary: p.IVRPathSummary,
           statedReason: p.statedReason,
           sentimentAnalysis: p.sentimentAnalysis,
+          accountNumber: p.accountNumber || p.AccountNumber,
+          accountName: p.accountName,
         });
         entry.state.preCall = {
           authenticationStatus: p.authenticationStatus,
@@ -126,6 +128,9 @@ function openConnection(taskSid) {
           statedReason: p.statedReason,
           sentimentAnalysis: p.sentimentAnalysis,
           callersPhoneNumber: p.callersPhoneNumber,
+          // relay sends AccountNumber (capital A) — normalise to lowercase for consistent reads
+          accountNumber: p.accountNumber || p.AccountNumber || null,
+          accountName: p.accountName || null,
         };
         break;
       case 'transcript': {
@@ -186,6 +191,8 @@ function openConnection(taskSid) {
           statedReason:          d.statedReason          || null,
           sentimentAnalysis:     d.sentimentAnalysis     || null,
           callersPhoneNumber:    d.callersPhoneNumber    || null,
+          accountNumber:         d.accountNumber || d.AccountNumber || null,
+          accountName:           d.accountName           || null,
         };
         // On takeover the relay creates a fresh session so pre_call_summary
         // arrives empty; backfill preCall with whatever the transfer_summary
@@ -199,6 +206,8 @@ function openConnection(taskSid) {
             statedReason:          d.statedReason          || null,
             sentimentAnalysis:     d.sentimentAnalysis     || null,
             callersPhoneNumber:    d.callersPhoneNumber    || entry.state.preCall?.callersPhoneNumber || null,
+            accountNumber:         d.accountNumber || d.AccountNumber || null,
+            accountName:           d.accountName           || null,
           };
           // Only backfill if at least one meaningful field (beyond phone number) has data
           const hasMeaningfulFill =
@@ -332,6 +341,9 @@ export function useAgentAssistWebSocket(task) {
         IVRPathSummary: attrs.IVRPathSummary || null,
         statedReason: attrs.statedReason || null,
         sentimentAnalysis: attrs.sentimentAnalysis || null,
+        // AccountNumber uses capital-A in Twilio task attributes — normalise to lowercase
+        accountNumber: attrs.accountNumber || attrs.account_number || attrs.AccountNumber || null,
+        accountName: attrs.accountName || null,
       };
       const hasAttrData = Object.values(seededPreCall).some(Boolean);
       if (hasAttrData) {

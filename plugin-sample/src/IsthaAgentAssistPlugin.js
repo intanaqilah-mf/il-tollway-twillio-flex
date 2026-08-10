@@ -213,14 +213,8 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     console.log('[IsthaAgentAssistPlugin] RightPanel registered in Panel2');
 
     // ── Supervisor join ───────────────────────────────────────────────────────
-    //
-    // Injects the "Add Supervisor" button into Flex's native call canvas so it
-    // appears alongside the built-in call controls. The button opens the
-    // SupervisorJoinModal which shows a live list of supervisor workers.
-    flex.CallCanvas.Content.add(
-      <AddSupervisorButton key="add-supervisor-btn" />,
-      { sortOrder: 100 }
-    );
+    // Button hidden — SupervisorJoinModal and replaceAction below are kept
+    // in case the button needs to be re-enabled later.
 
     // Override the native warm-transfer action when it's triggered WITHOUT a
     // pre-selected destination (i.e. the user clicked the "+" add-participant

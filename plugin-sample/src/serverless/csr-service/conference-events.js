@@ -96,6 +96,8 @@ async function fetchPreCallAttrsFromOriginalTask(client, context, customerCallSI
                 IVRPathSummary:       attrs.IVRPathSummary       || null,
                 statedReason:         attrs.statedReason         || null,
                 sentimentAnalysis:    attrs.sentimentAnalysis    || null,
+                AccountNumber:        attrs.AccountNumber        || null,
+                accountName:          attrs.accountName          || null,
             };
         }
 

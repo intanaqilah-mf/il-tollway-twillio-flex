@@ -515,10 +515,16 @@ const SAICPanel = ({ task: taskProp }) => {
     attrs.accountNumber ||
     attrs.account_number ||
     attrs.AccountNumber ||
+    transferSummary?.accountNumber ||
     null;
 
   const callerName = preCall?.callerName || attrs.callerName || attrs.name || null;
-  const accountName = preCall?.accountName || attrs.accountName || null;
+  const accountName =
+    preCall?.accountName ||
+    attrs.accountName ||
+    attrs.AccountName ||
+    transferSummary?.accountName ||
+    null;
 
   // transferSummary arrives via WebSocket 'transfer_summary' — on takeover the relay
   // delivers pre-call context here because the new session has no pre_call_summary yet.
