@@ -330,7 +330,7 @@ const LiveTranscript = ({ task: taskProp }) => {
     } catch { return undefined; }
   }, [taskProp]);
 
-  const { transcript: wsTranscript, postCall, connected, error, supervisorBarged } = useAgentAssistWebSocket(task);
+  const { transcript: wsTranscript, postCall, connected, error, supervisorBarged, supervisorMode, isOnHold } = useAgentAssistWebSocket(task);
   const scrollRef = useRef(null);
   const callEnded = !loading && !task;
 
@@ -412,8 +412,31 @@ const LiveTranscript = ({ task: taskProp }) => {
           })
         )}
 
-        {/* Supervisor barge-in banner — shown when relay stops transcripts */}
-        {supervisorBarged && (
+        {/* Coaching mode banner — shown when supervisor joins as coach */}
+        {supervisorBarged && supervisorMode === 'coach' && (
+          <div style={{
+            margin: '4px 0',
+            padding: '12px 14px',
+            background: '#e8f2ff',
+            border: '1px solid #0070b9',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            fontSize: '12px',
+            color: '#1a3352',
+            lineHeight: '1.5',
+          }}>
+            <span style={{ fontSize: '16px', flexShrink: 0 }}>🎧</span>
+            <div>
+              <div style={{ fontWeight: '700', marginBottom: '2px' }}>Supervisor has joined — Coaching Mode</div>
+              <div>Your supervisor can speak with you privately. The customer cannot hear them.</div>
+            </div>
+          </div>
+        )}
+
+        {/* Supervisor barge-in banner — shown for non-coaching modes when relay stops transcripts */}
+        {supervisorBarged && supervisorMode !== 'coach' && (
           <div style={{
             margin: '4px 0',
             padding: '12px 14px',

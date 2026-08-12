@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Manager, Actions } from '@twilio/flex-ui';
-import { sendToTask } from '../../hooks/useAgentAssistWebSocket';
+import { sendToTask, setSupervisorMode } from '../../hooks/useAgentAssistWebSocket';
 
 const colors = {
   navy: '#1a3352',
@@ -206,6 +206,13 @@ const SupervisorJoinModal = () => {
           console.log('[SupervisorJoin] notified relay of supervisorCallSid:', body.participantCallSid);
         }
       } catch {}
+
+      // Stamp the supervisor mode into the shared WebSocket registry immediately so
+      // LiveTranscript can show the correct banner before the relay sends supervisor_barged.
+      if (task?.taskSid) {
+        setSupervisorMode(task.taskSid, mode);
+        console.log('[SupervisorJoin] supervisor mode stamped locally:', mode);
+      }
 
       setStatus('done');
       setTimeout(handleClose, 1500);

@@ -26,6 +26,8 @@ const EMPTY_STATE = {
   connected: false,
   error: null,
   supervisorBarged: false,  // true when supervisor barge-in is detected — transcripts stop
+  supervisorMode: null,     // 'coach' | 'listen' | 'full' | 'barge_in' — set by SupervisorJoinModal
+  isOnHold: false,          // true when customer is on hold — transcripts pause
 };
 
 // One WebSocket per task SID, shared across ALL hook instances (SAICPanel,
@@ -134,6 +136,10 @@ function openConnection(taskSid) {
         };
         break;
       case 'transcript': {
+        if (entry.state.isOnHold) {
+          console.log(`[AA] transcript skipped — call is on hold [${p.speaker}]`);
+          break;
+        }
         console.log(`[AA] ✅ transcript [${p.speaker}]:`, p.transcript);
         entry.state.transcript = [
           ...entry.state.transcript,
@@ -230,6 +236,22 @@ function openConnection(taskSid) {
         // Transcripts and post-call summary are suppressed from this point on.
         console.log('[AA] ✅ supervisor_barged received — transcripts stopped by relay');
         entry.state.supervisorBarged = true;
+        // Relay may include the monitoring mode in the payload — capture it if present.
+        // SupervisorJoinModal also sets this via setSupervisorMode() on successful join.
+        if (p.supervisorStatus || p.supervisorMode || p.mode) {
+          entry.state.supervisorMode = p.supervisorStatus || p.supervisorMode || p.mode;
+          console.log('[AA] supervisorMode from relay payload:', entry.state.supervisorMode);
+        }
+        break;
+      case 'call_held':
+        // Relay sends this if it detects a hold event (future-proofing).
+        console.log('[AA] ✅ call_held — transcript paused');
+        entry.state.isOnHold = true;
+        break;
+      case 'call_resumed':
+        // Relay sends this if it detects an unhold event (future-proofing).
+        console.log('[AA] ✅ call_resumed — transcript resumed');
+        entry.state.isOnHold = false;
         break;
       default:
         console.log('[AA] unknown message type:', data.type, data);
@@ -312,6 +334,20 @@ export function sendToTask(taskSid, payload) {
   return sendMessageToRelay(taskSid, payload);
 }
 
+// Allows SupervisorJoinModal to stamp the supervisor mode into shared registry state
+// immediately on successful join — before the relay sends supervisor_barged — so
+// LiveTranscript can show the correct banner (coaching vs barge-in) right away.
+export function setSupervisorMode(taskSid, mode) {
+  const entry = registry.get(taskSid);
+  if (!entry) {
+    console.warn('[AA] setSupervisorMode: no registry entry for task', taskSid);
+    return;
+  }
+  entry.state.supervisorMode = mode;
+  console.log('[AA] setSupervisorMode →', mode, 'for task', taskSid);
+  notify(taskSid);
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useAgentAssistWebSocket(task) {
   // Use stable primitive SID — NOT the task object — as the dependency key.
@@ -376,6 +412,30 @@ export function useAgentAssistWebSocket(task) {
     };
     Actions.addListener('afterAcceptTask', onAfterAccept);
 
+    // Pause transcript display when the customer is put on hold, resume on unhold.
+    // This prevents stale or unwanted transcripts from appearing while the customer
+    // is not on the line (only applies to the task this hook instance is tracking).
+    const onAfterHold = (payload) => {
+      const heldTaskSid = payload?.task?.taskSid || payload?.task?.sid;
+      if (heldTaskSid !== taskSid) return;
+      const e = registry.get(taskSid);
+      if (!e) return;
+      e.state.isOnHold = true;
+      console.log('[AA] ⏸ customer on hold — transcripts paused');
+      notify(taskSid);
+    };
+    const onAfterUnhold = (payload) => {
+      const unheldTaskSid = payload?.task?.taskSid || payload?.task?.sid;
+      if (unheldTaskSid !== taskSid) return;
+      const e = registry.get(taskSid);
+      if (!e) return;
+      e.state.isOnHold = false;
+      console.log('[AA] ▶ customer off hold — transcripts resumed');
+      notify(taskSid);
+    };
+    Actions.addListener('afterHoldParticipant', onAfterHold);
+    Actions.addListener('afterUnholdParticipant', onAfterUnhold);
+
     // If component mounts mid-call (e.g. panel re-render during active call),
     // the afterAcceptTask event already fired — open immediately.
     const alreadyActive = ['assigned', 'accepted', 'wrapping'].includes(task?.status);
@@ -389,6 +449,8 @@ export function useAgentAssistWebSocket(task) {
 
     return () => {
       Actions.removeListener('afterAcceptTask', onAfterAccept);
+      Actions.removeListener('afterHoldParticipant', onAfterHold);
+      Actions.removeListener('afterUnholdParticipant', onAfterUnhold);
       const e = registry.get(taskSid);
       if (!e) return;
       e.listeners.delete(listener);
