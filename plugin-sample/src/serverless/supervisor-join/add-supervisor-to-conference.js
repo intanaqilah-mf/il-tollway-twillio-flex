@@ -74,7 +74,10 @@ exports.handler = function (context, event, callback) {
 
           const attributes = JSON.parse(task.attributes || '{}');
           attributes.conversations = attributes.conversations || {};
-          attributes.conversations.monitoring_status = 'monitored';
+          // Use the ACTUAL mode so conference-events.js can branch correctly:
+          //   'takeover' → triggers the takeover relay-session setup + queue-gate bypass
+          //   'monitored' → standard listen/coach/full supervisor notification
+          attributes.conversations.monitoring_status = (mode === 'takeover') ? 'takeover' : 'monitored';
           attributes.conversations.supervisor_call_sid = participant.callSid;
 
           await client.taskrouter.v1
@@ -82,7 +85,7 @@ exports.handler = function (context, event, callback) {
             .tasks(taskSid)
             .update({ attributes: JSON.stringify(attributes) });
 
-          console.log('[add-supervisor] ✅ task attributes updated — conversations.monitoring_status: monitored');
+          console.log('[add-supervisor] ✅ task attributes updated — conversations.monitoring_status:', attributes.conversations.monitoring_status);
         } catch (attrErr) {
           // Log but don't fail — supervisor is already in the conference
           console.error('[add-supervisor] ❌ failed to update task attributes:', attrErr.message);

@@ -240,6 +240,67 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     try { flex.TaskListButtons.Content.remove('wrapup'); } catch {}
     try { flex.TaskCanvasHeader.Content.remove('actions'); } catch {}
 
+    // ── 10-second wrapup guard for supervisor/CSR2 takeover tasks ────────────
+    //
+    // WHY THIS IS NEEDED:
+    //   Normal CSR1 tasks get their 10-second delay from the Redux subscriber
+    //   below — it fires CompleteTask after 10 s, giving SAICPanel time to
+    //   auto-submit the post-call summary before the task is closed.
+    //
+    //   In takeover mode, the supervisor/CSR2 task is an outbound conference
+    //   participant call routed through a different workflow that has wrapupTime=0.
+    //   When the call ends, Flex auto-completes that task immediately — bypassing
+    //   the Redux subscriber's 10-second timer entirely.
+    //
+    // HOW THIS WORKS:
+    //   Every CompleteTask call passes through this replaceAction.  If the task is
+    //   still in 'wrapping' and fewer than 10 seconds have elapsed since wrapping
+    //   started (recorded by the Redux subscriber below), we hold the completion
+    //   for the remaining time.
+    //
+    //   For normal CSR1 tasks this is a no-op — the subscriber already waits 10 s
+    //   before calling CompleteTask, so elapsed ≥ 10 000 ms and we proceed
+    //   immediately.  For supervisor/CSR2 tasks where Flex auto-completes at t=0
+    //   we enforce the full 10-second window.
+    //
+    //   The completionGuarded set prevents a race between the Redux 10-second
+    //   timer and Flex's own auto-complete from both completing the same task.
+    // ─────────────────────────────────────────────────────────────────────────
+    const wrapupStartTime   = new Map(); // taskSid → timestamp when task entered 'wrapping'
+    const completionGuarded = new Set(); // prevents duplicate CompleteTask races
+
+    flex.Actions.replaceAction('CompleteTask', async (payload, original) => {
+      const task = payload.task;
+      const sid  = task?.taskSid || task?.sid;
+
+      if (!sid) return original(payload);
+
+      // Suppress the second call when Redux timer and Flex auto-complete race each other
+      if (completionGuarded.has(sid)) {
+        console.log('[IsthaAgentAssistPlugin] CompleteTask for', sid, '— duplicate suppressed (guard)');
+        return;
+      }
+      completionGuarded.add(sid);
+
+      if (task?.status === 'wrapping') {
+        const now       = Date.now();
+        const wrapStart = wrapupStartTime.get(sid) ?? now; // default to now if not yet recorded
+        const elapsed   = now - wrapStart;
+        if (elapsed < 10000) {
+          const hold = 10000 - elapsed;
+          console.log(
+            '[IsthaAgentAssistPlugin] Task', sid,
+            '— completing too early, holding', hold, 'ms',
+            '(supervisor/CSR2 takeover wrapup guard)',
+          );
+          await new Promise(resolve => setTimeout(resolve, hold));
+        }
+      }
+
+      return original(payload);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Single Redux subscriber handles two jobs ──────────────────────────────
     //
     // 1. STICKY CALL CANVAS  — whenever a voice task is active but the canvas
@@ -262,6 +323,9 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
     //
     // 2. AUTO-COMPLETE  — tasks that reach 'wrapping' are completed after 10 s
     //    so SAICPanel has time to submit the post-call summary first.
+    //    Also stamps wrapupStartTime for the replaceAction('CompleteTask') guard
+    //    above, which enforces the same 10-second window for supervisor/CSR2
+    //    takeover tasks that Flex auto-completes immediately (wrapupTime=0).
     // ─────────────────────────────────────────────────────────────────────────
     const autoCompleted = new Set();
     let clickCooldown = false;
@@ -307,13 +371,24 @@ export default class IsthaAgentAssistPlugin extends FlexPlugin {
       // ── job 2: auto-complete on wrap-up ───────────────────────────────────
       for (const task of tasks.values()) {
         const sid = task.taskSid || task.sid;
-        if (task.status === 'wrapping' && !autoCompleted.has(sid)) {
-          autoCompleted.add(sid);
-          console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 10 s');
-          setTimeout(() => {
-            Actions.invokeAction('CompleteTask', { task })
-              .catch((e) => console.error('[IsthaAgentAssistPlugin] CompleteTask failed:', e));
-          }, 10000);
+        if (task.status === 'wrapping') {
+          // Stamp the wrapping start time on first detection.
+          // The replaceAction('CompleteTask') above reads this to know how long
+          // the task has already been in wrapping before Flex's own auto-complete
+          // fires — critical for supervisor/CSR2 tasks in takeover mode where the
+          // workflow has wrapupTime=0 and Flex would otherwise complete instantly.
+          if (!wrapupStartTime.has(sid)) {
+            wrapupStartTime.set(sid, Date.now());
+            console.log('[IsthaAgentAssistPlugin] Task', sid, 'entered wrap-up — start time recorded');
+          }
+          if (!autoCompleted.has(sid)) {
+            autoCompleted.add(sid);
+            console.log('[IsthaAgentAssistPlugin] Task', sid, 'entering wrap-up — auto-completing in 10 s');
+            setTimeout(() => {
+              Actions.invokeAction('CompleteTask', { task })
+                .catch((e) => console.error('[IsthaAgentAssistPlugin] CompleteTask failed:', e));
+            }, 10000);
+          }
         }
       }
     });

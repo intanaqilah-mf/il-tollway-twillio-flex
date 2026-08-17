@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Manager, Actions } from '@twilio/flex-ui';
 
-const WSS_URL = 'wss://gapi.getipass.com/ai/agent-assist/subscriber/dev/browser-ui/streaming';
+const WSS_URL = 'wss://gapi.getipass.com/ai/agent-assist/subscriber/dev/browser-ui/streaming?apiKey=xyz';
 const MAX_BACKOFF_MS = 30000;
 
 

@@ -526,43 +526,62 @@ exports.handler = async function (context, event, callback) {
             JSON.stringify(latestTaskAttributes?.agentCallSids, null, 2)
         );
 
-        const latestAgent = getLatestAgentDetails(latestTaskAttributes) || getLatestAgentDetails(taskAttributes); console.log(" Latest Agent Object:", JSON.stringify(latestAgent, null, 2));
+        // ── TAKEOVER wrapup: use customerCallSID as the relay session key ────────
+        //
+        // WHY: In the TaskUpdated takeover handler, the relay session was registered
+        // under customerCallSID (not the supervisor's call SID) so that the plugin's
+        // WebSocket subscription (which keys on the task's call_sid = customerCallSID)
+        // matches the session.  Using the supervisor's call SID here would cause
+        // getToken to return a token for an unknown session and the relay would fail
+        // to find and process the wrapup.
+        //
+        // HOW: Detect takeover via monitoring_status='takeover' (set by
+        // add-supervisor-to-conference.js when mode='takeover') and, when present,
+        // replace the effective callSid with customerCallSID throughout this handler.
+        // ─────────────────────────────────────────────────────────────────────────
+        const isTakeoverWrapup =
+            (latestTaskAttributes?.conversations?.monitoring_status === 'takeover' ||
+             taskAttributes?.conversations?.monitoring_status === 'takeover') &&
+            !!customerCallSID;
+
+        console.log("[TaskWrapup] isTakeoverWrapup:", isTakeoverWrapup, "| customerCallSID:", customerCallSID);
+
+        const latestAgent = getLatestAgentDetails(latestTaskAttributes) || getLatestAgentDetails(taskAttributes);
+        console.log(" Latest Agent Object:", JSON.stringify(latestAgent, null, 2));
+
         const wrapupAgentCallSID =
             latestAgent?.callSid ||
             publisher_metadata?.worker_call_sid ||
             publisher_metadata?.conference_worker_call_sid ||
             taskAttributes?.conference?.participants?.worker;
 
-        console.log(
-            "Final Wrapup Agent Call SID:",
-            wrapupAgentCallSID
-        );
+        // For takeover tasks the relay session is keyed under customerCallSID;
+        // for all other tasks use the standard agent call SID.
+        const effectiveCallSid = isTakeoverWrapup ? customerCallSID : wrapupAgentCallSID;
 
-        if (!wrapupAgentCallSID) {
-            console.log("No wrapupAgentCallSID found. Skipping TaskWrapup.");
+        console.log("Final Wrapup Agent Call SID (raw):", wrapupAgentCallSID);
+        console.log("Effective Wrapup Call SID (used for relay):", effectiveCallSid);
+
+        if (!effectiveCallSid) {
+            console.log("No effectiveCallSid found. Skipping TaskWrapup.");
             return callback(null, {});
         }
 
-        console.log(
-            "Wrapup Agent Call SID:",
-            wrapupAgentCallSID
-        );
         let wrapupResult;
         try {
-            wrapupResult = await getToken(wrapupAgentCallSID);
+            wrapupResult = await getToken(effectiveCallSid);
         } catch (err) {
             console.log("Failed to get wrapup auth token:", err);
             return callback(err);
         }
 
         const wrapupHeaders = { 'Authorization': `Bearer ${wrapupResult.streamToken}` };
-        const latestAgentCallSID = latestAgent?.callSid || wrapupAgentCallSID;
         const latestWorkerSid = latestAgent?.workerSid || null;
         const latestWorkerName = latestAgent?.workerName || payload.worker_name;
         const latestWorkerEmail = latestAgent?.email || null;
         const latestFullName = latestAgent?.fullName || agentAttributes?.full_name;
 
-        console.log("Call SID:", latestAgentCallSID);
+        console.log("Effective Call SID:", effectiveCallSid);
         console.log("Worker SID:", latestWorkerSid);
         console.log("Worker Name:", latestWorkerName);
         console.log("Email:", latestWorkerEmail);
@@ -578,7 +597,7 @@ exports.handler = async function (context, event, callback) {
 
         data = {
             event: eventName,
-            callSid: wrapupAgentCallSID,
+            callSid: effectiveCallSid,
             workerFriendlyName: latestWorkerName,
             authenticationStatus: ta.authenticationStatus ?? tap.authenticationStatus,
             intentIdentified:     ta.intentIdentified     ?? tap.intentIdentified,
@@ -594,9 +613,26 @@ exports.handler = async function (context, event, callback) {
             accountName:          ta.accountName           ?? tap.accountName,
         };
 
+        // ── Takeover wrapup: 10-second delay before notifying the relay ──────────
+        // WHY: For normal CSR1 tasks the Flex plugin's Redux subscriber schedules
+        // CompleteTask 10 seconds after the task enters wrapping, giving SAICPanel
+        // time to auto-submit the post-call summary.  For supervisor/CSR2 tasks
+        // created by the takeover conference-participant call, the workflow may have
+        // wrapupTime=0, causing Flex (or TaskRouter) to complete the task immediately.
+        // Adding a 10-second hold here ensures the relay does not close the session
+        // before SAICPanel has had a chance to receive and submit the summary.
+        // The plugin-side replaceAction('CompleteTask') guard is the primary defence
+        // for Flex-triggered completions; this delay is the server-side backstop for
+        // TaskRouter-triggered completions that bypass the Flex plugin entirely.
+        // ─────────────────────────────────────────────────────────────────────────
+        if (isTakeoverWrapup) {
+            console.log("[TaskWrapup] Takeover task — holding 10 s before relay notification (supervisor/CSR2 wrapup window)");
+            await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+
         console.log("data passing to the endpoint:", data);
         try {
-            const response = await axios.post(url, data, { headers: wrapupHeaders, timeout: 5000 });
+            const response = await axios.post(url, data, { headers: wrapupHeaders, timeout: 15000 });
             console.log("response.data:", data.event, ":", response.data);
             return callback(null, {});
         } catch (error) {
