@@ -539,12 +539,51 @@ exports.handler = async function (context, event, callback) {
         // add-supervisor-to-conference.js when mode='takeover') and, when present,
         // replace the effective callSid with customerCallSID throughout this handler.
         // ─────────────────────────────────────────────────────────────────────────
-        const isTakeoverWrapup =
+
+        // Refresh customerCallSID from latestTaskAttributes — the wrapup payload is
+        // often a snapshot taken before the conference ended, so
+        // conference.participants.customer may already be null in the payload even
+        // though it is still recorded on the live task record.
+        const latestCustomerCallSID =
+            latestTaskAttributes?.conversations?.conversation_attribute_1 ||
+            latestTaskAttributes?.conference?.participants?.customer ||
+            customerCallSID;
+
+        // Primary detection: the wrapping task itself has monitoring_status='takeover'
+        // (covers the case where the original task is the one wrapping up).
+        let isTakeoverWrapup =
             (latestTaskAttributes?.conversations?.monitoring_status === 'takeover' ||
              taskAttributes?.conversations?.monitoring_status === 'takeover') &&
-            !!customerCallSID;
+            !!latestCustomerCallSID;
 
-        console.log("[TaskWrapup] isTakeoverWrapup:", isTakeoverWrapup, "| customerCallSID:", customerCallSID);
+        // Secondary detection: supervisor/CSR2 may have their own separate task that
+        // does NOT carry monitoring_status='takeover' — that flag lives only on the
+        // original task.  Identify the takeover by finding a sibling task that shares
+        // the same customerCallSID AND has the takeover flag.
+        if (!isTakeoverWrapup && latestCustomerCallSID) {
+            try {
+                const siblingTasks = await client.taskrouter.v1
+                    .workspaces(context.TWILIO_WORKSPACE_SID)
+                    .tasks.list({ limit: 20 });
+                isTakeoverWrapup = siblingTasks.some(t => {
+                    if (t.sid === taskSid) return false;
+                    let a;
+                    try { a = JSON.parse(t.attributes || '{}'); } catch { return false; }
+                    const tCustSid =
+                        a.conversations?.conversation_attribute_1 ||
+                        a.conference?.participants?.customer || null;
+                    return tCustSid === latestCustomerCallSID &&
+                           a.conversations?.monitoring_status === 'takeover';
+                });
+                if (isTakeoverWrapup) {
+                    console.log('[TaskWrapup] ✅ Secondary takeover detection — supervisor/CSR2 own task wrapping up');
+                }
+            } catch (searchErr) {
+                console.error('[TaskWrapup] secondary takeover detection failed:', searchErr.message);
+            }
+        }
+
+        console.log("[TaskWrapup] isTakeoverWrapup:", isTakeoverWrapup, "| latestCustomerCallSID:", latestCustomerCallSID);
 
         const latestAgent = getLatestAgentDetails(latestTaskAttributes) || getLatestAgentDetails(taskAttributes);
         console.log(" Latest Agent Object:", JSON.stringify(latestAgent, null, 2));
@@ -555,9 +594,9 @@ exports.handler = async function (context, event, callback) {
             publisher_metadata?.conference_worker_call_sid ||
             taskAttributes?.conference?.participants?.worker;
 
-        // For takeover tasks the relay session is keyed under customerCallSID;
+        // For takeover tasks the relay session is keyed under latestCustomerCallSID;
         // for all other tasks use the standard agent call SID.
-        const effectiveCallSid = isTakeoverWrapup ? customerCallSID : wrapupAgentCallSID;
+        const effectiveCallSid = isTakeoverWrapup ? latestCustomerCallSID : wrapupAgentCallSID;
 
         console.log("Final Wrapup Agent Call SID (raw):", wrapupAgentCallSID);
         console.log("Effective Wrapup Call SID (used for relay):", effectiveCallSid);
