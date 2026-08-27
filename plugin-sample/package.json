@@ -1,6 +1,6 @@
 {
-  "name": "plugin-sample",
-  "version": "12.0.27",
+  "name": "istha-agent-assist-ui",
+  "version": "0.0.3",
   "private": true,
   "scripts": {
     "postinstall": "flex-plugin pre-script-check"

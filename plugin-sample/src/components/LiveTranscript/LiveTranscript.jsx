@@ -226,26 +226,48 @@ function redactPII(text) {
   // Amex 4-6-5 format: 3782 822463 10005
   out = out.replace(/\b\d{4}[\s\-]\d{6}[\s\-]\d{5}\b/g, '[REDACTED]');
 
+  // Partial / truncated card — 3-group (4-4-3 or 4-4-4): e.g. "5555 6175 332"
+  // Catches cards read aloud without the final group (common when the customer
+  // is still speaking). Runs AFTER full-format patterns so a complete 16-digit
+  // card is never double-processed.
+  out = out.replace(/\b\d{4}[\s\-]\d{4}[\s\-]\d{3,4}\b/g, '[REDACTED]');
+
   // Raw continuous card digits (13–19 digits not already replaced)
   out = out.replace(/\b\d{13,19}\b/g, '[REDACTED]');
+
+  // Spoken digit-by-digit: "4 5 3 2 1 2 3 4 5 6 7 8 9 0 1 2"
+  // STT often transcribes verbally-read card numbers as individual spaced digits.
+  // Matches 13–19 single digits each separated by exactly one space (no keyword needed).
+  out = out.replace(/\b\d(?:[ ]\d){12,18}\b/g, '[REDACTED]');
+
+  // Trailing bare digits after a card redaction — catches a CVV or extra digit
+  // group spoken immediately after the card with no keyword, e.g. "[REDACTED] 000".
+  // Runs last in the card block so it only fires once a card has already been replaced.
+  out = out.replace(/\[REDACTED\](\s+)\d{3,4}\b/g, '[REDACTED]');
 
   // ── Date of Birth (before card expiry to prevent MM/DD overlap) ─────────
   // Numeric: MM/DD/YYYY or MM-DD-YYYY (4-digit year anchored to 19xx / 20xx)
   out = out.replace(/\b(0[1-9]|1[0-2])[\/\-](0[1-9]|[12]\d|3[01])[\/\-](19|20)\d{2}\b/g, '[REDACTED]');
 
-  // Written: "January 15, 1990" or "Jan 15 1990"
+  // Written: "January 15, 1990" / "Jan 15 1990" / "January, 15 1990" / "January 15th, 1990"
+  // \s*,?\s* tolerates a comma between the month name and the day (common STT artefact).
+  // (?:st|nd|rd|th)? catches ordinal day suffixes ("15th", "1st", etc.).
   out = out.replace(
-    /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+(19|20)\d{2}\b/gi,
+    /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*,?\s*\d{1,2}(?:st|nd|rd|th)?,?\s+(19|20)\d{2}\b/gi,
     '[REDACTED]'
   );
-  // Written reversed: "15 January 1990"
+  // Written reversed: "15 January 1990" or "15th January 1990"
   out = out.replace(
-    /\b\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(19|20)\d{2}\b/gi,
+    /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(19|20)\d{2}\b/gi,
     '[REDACTED]'
   );
-  // Keyword-labeled: "DOB: 01/15/1990" or "date of birth: January 15, 1990"
+  // Keyword-labeled DOB — expanded to handle:
+  //   • "date of my/their/his/her birth" (possessive pronoun between "of" and "birth")
+  //   • "is" as separator (e.g. "date of birth is January 15th 1990")
+  //   • ordinal day suffixes and loose year (2- or 4-digit)
+  //   • reversed order inside keyword context ("15th January 1990")
   out = out.replace(
-    /\b(?:dob|date\s+of\s+birth|birth(?:day|date)?)\s*[:\-]?\s*(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{2,4})\b/gi,
+    /\b(?:dob|date\s+of\s+(?:(?:my|their|his|her|the)\s+)?birth|birth(?:day|date)?)\s*(?:[:\-]|is)?\s*(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*,?\s*\d{1,2}(?:st|nd|rd|th)?,?\s*\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*,?\s*\d{2,4})\b/gi,
     '[REDACTED]'
   );
 
@@ -259,8 +281,12 @@ function redactPII(text) {
   // ── SSN ──────────────────────────────────────────────────────────────────
   // Formatted: XXX-XX-XXXX or XXX XX XXXX
   out = out.replace(/\b\d{3}[\s\-]\d{2}[\s\-]\d{4}\b/g, '[REDACTED]');
-  // Keyword-labeled: "ssn: 123456789"
-  out = out.replace(/\b(?:ssn|social\s+security(?:\s+number)?)\s*[:\-]?\s*\d{9}\b/gi, '[REDACTED]');
+  // Keyword-labeled: "ssn: 123456789" or "social security number 123456789"
+  out = out.replace(/\b(?:ssn|social\s+security(?:\s+number)?)\s*(?:[:\-]|is)?\s*\d{9}\b/gi, '[REDACTED]');
+
+  // Spoken digit-by-digit SSN: "1 2 3 4 5 6 7 8 9" (9 individual spaced single digits)
+  // STT often transcribes a verbally-read 9-digit SSN as individual spaced digits.
+  out = out.replace(/\b\d(?:[ ]\d){8}\b/g, '[REDACTED]');
 
   // ── ITIN (Individual Taxpayer Identification Number) ─────────────────────
   // Structured: 9XX-7X-XXXX / 9XX-8X-XXXX / 9XX-9[0-3]-XXXX
@@ -273,27 +299,36 @@ function redactPII(text) {
   out = out.replace(/\b(?:military\s+id|dod\s+(?:id|identification)|service(?:\s+member)?\s+id)\s*[:\-]?\s*\d{10}\b/gi, '[REDACTED]');
 
   // ── Driver's License Number ──────────────────────────────────────────────
-  // Keyword-contextual — covers all 50-state formats (letter+digit combos vary)
+  // Compact format: keyword + consecutive alphanumeric value (all 50-state formats)
+  // Accepts "is" as separator in addition to : and - (e.g. "license is AB1234567")
   out = out.replace(
-    /\b(?:driver(?:'?s)?\s+licen[sc]e(?:\s+(?:number|no\.?|#))?|d\.?l\.?n?)\s*[:\-]?\s*[A-Z0-9]{6,12}\b/gi,
+    /\b(?:driver(?:'?s)?\s+licen[sc]e(?:\s+(?:number|no\.?|#))?|d\.?l\.?n?)\s*(?:[:\-]|is)?\s*[A-Z0-9]{6,12}\b/gi,
+    '[REDACTED]'
+  );
+  // Spelled-out / spaced format: "d. l I x. 543" (chars separated by dots or spaces)
+  // Requires the keyword — pattern uses inter-char separators so it won't fire on prose words.
+  out = out.replace(
+    /\b(?:driver(?:'?s)?\s+licen[sc]e|d\.?l\.?n?)\s*(?:[:\-]|is)?\s*[A-Z0-9](?:[.\s]+[A-Z0-9]+){4,}\b/gi,
     '[REDACTED]'
   );
 
   // ── Passport Number ──────────────────────────────────────────────────────
   // US passport: single capital letter + exactly 8 digits (e.g. A12345678)
   // Keyword-contextual first (broader format), then standalone specific format
-  out = out.replace(/\b(?:passport(?:\s+(?:number|no\.?|#))?)\s*[:\-]?\s*[A-Z0-9]{6,9}\b/gi, '[REDACTED]');
-  // Standalone: capital letter + 8 digits — specific enough to catch without keyword
-  out = out.replace(/\b[A-Z]\d{8}\b/g, '[REDACTED]');
+  out = out.replace(/\b(?:passport(?:\s+(?:number|no\.?|#))?)\s*(?:[:\-]|is)?\s*[A-Z0-9]{6,9}\b/gi, '[REDACTED]');
+  // Standalone: letter (upper or lower) + 8 digits — case-insensitive so "k12345678" is caught
+  out = out.replace(/\b[A-Z]\d{8}\b/gi, '[REDACTED]');
 
   // ── Home Address ─────────────────────────────────────────────────────────
-  // Street number + 1–4 word name + street type suffix
+  // Street number + 1–4 word name + street type suffix.
+  // [.\s]+ after the street number tolerates "23. Main Street" (period after digits, STT artefact).
   out = out.replace(
-    /\b\d{1,5}\s+(?:[A-Za-z]+\s+){1,4}(?:Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Drive|Dr\.?|Road|Rd\.?|Lane|Ln\.?|Court|Ct\.?|Way|Place|Pl\.?|Terrace|Terr?\.?|Parkway|Pkwy\.?|Highway|Hwy\.?|Circle|Cir\.?|Loop)\b/gi,
+    /\b\d{1,5}[.\s]+(?:[A-Za-z]+\s+){1,4}(?:Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Drive|Dr\.?|Road|Rd\.?|Lane|Ln\.?|Court|Ct\.?|Way|Place|Pl\.?|Terrace|Terr?\.?|Parkway|Pkwy\.?|Highway|Hwy\.?|Circle|Cir\.?|Loop)\b/gi,
     '[REDACTED]'
   );
-  // Keyword-labeled address: catches "address: 123 Main St, City, ST 12345"
-  out = out.replace(/\b(?:(?:home|mailing|billing|current|street)\s+)?address\s*[:\-]\s*[^\n]+/gi, '[REDACTED]');
+  // Keyword-labeled: "address: …" / "address is …"
+  // Accepts "is" in addition to : and - so "my address is 23 Main St" is caught.
+  out = out.replace(/\b(?:(?:home|mailing|billing|current|street)\s+)?address\s*(?:[:\-]|is)\s*[^\n]+/gi, '[REDACTED]');
 
   // ── ZIP Code ─────────────────────────────────────────────────────────────
   // ZIP+4 standalone: 12345-6789 (specific enough to catch without keyword)

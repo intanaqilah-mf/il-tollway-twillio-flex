@@ -6,7 +6,7 @@ import LiveTranscript from './components/LiveTranscript/LiveTranscript';
 import SupervisorJoinModal, { openSupervisorModal } from './components/SupervisorJoin/SupervisorJoinModal';
 import AddSupervisorButton from './components/SupervisorJoin/AddSupervisorButton';
 
-const PLUGIN_NAME = 'IsthaAgentAssistPlugin';
+const PLUGIN_NAME = 'istha-agent-assist-ui';
 
 // ── Session-conflict guard ────────────────────────────────────────────────────
 //

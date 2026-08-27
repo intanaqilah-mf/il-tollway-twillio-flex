@@ -236,6 +236,47 @@ const s = {
   },
 };
 
+/**
+ * Redacts address-related PII from a text string before it is rendered.
+ * Applied to free-text fields in SAICPanel (stated reason, IVR path,
+ * AI summary, transfer summary) that may contain customer address details.
+ *
+ * Covers:
+ *   - Street address:  "123 Main Street", "45 Oak Blvd", etc.
+ *   - Keyword-labeled: "address: …", "billing address: …", etc.
+ *   - ZIP+4 standalone: 12345-6789
+ *   - Keyword-labeled ZIP / postal code
+ */
+function redactAddress(text) {
+  if (!text) return text;
+  let out = text;
+
+  // Street number + 1–4 word name + street-type suffix.
+  // [.\s]+ tolerates "23. Main Street" (period after number, common STT artefact).
+  out = out.replace(
+    /\b\d{1,5}[.\s]+(?:[A-Za-z]+\s+){1,4}(?:Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Drive|Dr\.?|Road|Rd\.?|Lane|Ln\.?|Court|Ct\.?|Way|Place|Pl\.?|Terrace|Terr?\.?|Parkway|Pkwy\.?|Highway|Hwy\.?|Circle|Cir\.?|Loop)\b/gi,
+    '[REDACTED]'
+  );
+
+  // Keyword-labeled: "address: …" or "address is …"
+  // Accepts "is" as separator so "my address is 23 Main St" is caught.
+  out = out.replace(
+    /\b(?:(?:home|mailing|billing|current|street)\s+)?address\s*(?:[:\-]|is)\s*[^\n]+/gi,
+    '[REDACTED]'
+  );
+
+  // ZIP+4 standalone — specific enough to catch without keyword
+  out = out.replace(/\b\d{5}[-]\d{4}\b/g, '[REDACTED]');
+
+  // Keyword-labeled 5-digit ZIP / postal code
+  out = out.replace(
+    /\b(?:zip\s*(?:code)?|postal\s*(?:code)?)\s*[:\-]?\s*\d{5}(?:[-\s]\d{4})?\b/gi,
+    '[REDACTED]'
+  );
+
+  return out;
+}
+
 function getSentimentColor(label) {
   const l = (label || '').toLowerCase();
   if (l.startsWith('pos')) return colors.sentimentGreen;
@@ -565,6 +606,12 @@ const SAICPanel = ({ task: taskProp }) => {
     transferSummary?.IVRPathSummary ||
     null;
 
+  // Address-redacted display values — originals are still submitted to SAP unchanged.
+  // Applied to every free-text field that could contain a customer address.
+  const displayStatedReason = redactAddress(statedReason);
+  const displayIvrPath      = redactAddress(ivrPath);
+  const displaySummary      = redactAddress(summary);
+
   // Pre-call sentiment — static from IVR handoff, shown in pre-call section
   const preCallSentiment =
     preCall?.sentimentAnalysis ||
@@ -725,18 +772,18 @@ const SAICPanel = ({ task: taskProp }) => {
                 Object.entries(transferSummary.sections).map(([key, val]) => (
                   <div key={key} style={{ marginBottom: '4px' }}>
                     <div style={{ fontSize: '10px', color: colors.textLabel, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '1px' }}>{key}</div>
-                    <div style={{ color: colors.textPrimary, fontSize: '12px', lineHeight: '1.4' }}>{val}</div>
+                    <div style={{ color: colors.textPrimary, fontSize: '12px', lineHeight: '1.4' }}>{redactAddress(val)}</div>
                   </div>
                 ))
               ) : (
-                <div style={{ color: colors.textPrimary, fontWeight: '500', lineHeight: '1.4', marginBottom: '6px', fontSize: '12px' }}>{transferSummary.text}</div>
+                <div style={{ color: colors.textPrimary, fontWeight: '500', lineHeight: '1.4', marginBottom: '6px', fontSize: '12px' }}>{redactAddress(transferSummary.text)}</div>
               )}
               <div style={{ borderTop: `1px solid ${colors.borderColor}`, margin: '6px 0' }} />
               <div style={{ color: colors.textSecondary, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '3px' }}>Stated Reason</div>
-              <StatedReasonValue value={statedReason} />
+              <StatedReasonValue value={displayStatedReason} />
             </div>
           ) : (
-            <StatedReasonValue value={statedReason} />
+            <StatedReasonValue value={displayStatedReason} />
           )}
         </div>
       </div>
@@ -744,7 +791,7 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.fieldRow}>
         <div style={s.fieldLabel}>IVR Path</div>
         <div style={s.fieldValue}>
-          {ivrPath || <Placeholder text="Menu path before reaching you" />}
+          {displayIvrPath || <Placeholder text="Menu path before reaching you" />}
         </div>
       </div>
 
@@ -797,7 +844,7 @@ const SAICPanel = ({ task: taskProp }) => {
       <div style={s.summaryBox}>
         <div style={s.summaryLabel}>Generative AI Session Summarization</div>
         {(() => {
-          const parsed = parseSummaryFields(summary);
+          const parsed = parseSummaryFields(displaySummary);
           if (parsed) {
             return (
               <div style={{ ...s.summaryText, padding: '10px 12px' }}>
@@ -813,8 +860,8 @@ const SAICPanel = ({ task: taskProp }) => {
             );
           }
           return (
-            <div style={{ ...s.summaryText, color: summary ? colors.textPrimary : colors.textSecondary }}>
-              {summary || 'AI summary auto-generates when call ends.'}
+            <div style={{ ...s.summaryText, color: displaySummary ? colors.textPrimary : colors.textSecondary }}>
+              {displaySummary || 'AI summary auto-generates when call ends.'}
             </div>
           );
         })()}
