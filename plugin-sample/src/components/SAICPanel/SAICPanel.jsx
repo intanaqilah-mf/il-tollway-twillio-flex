@@ -635,7 +635,7 @@ const SAICPanel = ({ task: taskProp }) => {
   function buildSummaryPayload() {
     return {
       type: 'agent_summary_submit',
-      callSid,
+      callSid: postCall?.callSid || callSid,
       taskSid,
       agentEmail,
       submittedAt: new Date().toISOString(),
@@ -652,7 +652,7 @@ const SAICPanel = ({ task: taskProp }) => {
       overallSentiment: postCall?.overallSentiment || sentimentLabel,
       aiSummary: originalAiSummary,
       agentAssistTabActiveDurationInSecs: getTabFocusSeconds(),
-      customerCallUsId: postCall?.customerCallUsId ?? null,
+      customerCallSid: postCall?.customerCallSid ?? null,
     };
   }
 
