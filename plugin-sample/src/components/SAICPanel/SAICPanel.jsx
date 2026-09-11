@@ -95,6 +95,18 @@ const s = {
     fontWeight: '500',
     lineHeight: '1.4',
   },
+  accountNumberInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '5px 8px',
+    fontSize: '13px',
+    fontWeight: '500',
+    fontFamily: 'inherit',
+    color: colors.textPrimary,
+    border: `1px solid ${colors.sapBlue}`,
+    borderRadius: '4px',
+    outline: 'none',
+  },
   fieldPlaceholder: {
     color: colors.textSecondary,
     fontWeight: '400',
@@ -447,6 +459,12 @@ const SAICPanel = ({ task: taskProp }) => {
   const [summary, setSummary] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [originalAiSummary, setOriginalAiSummary] = useState('');
+  // Manual account-number override — lets the agent key in / correct the account
+  // number when the caller hasn't been authenticated yet (so no trusted value has
+  // come down from pre-call). null = agent hasn't touched it, so we still track the
+  // system-derived value underneath. Once set, the override wins everywhere the
+  // account number is displayed or submitted.
+  const [accountNumberOverride, setAccountNumberOverride] = useState(null);
   const hasSubmittedRef = useRef(false);
   const callEndedRef = useRef(false);
 
@@ -498,6 +516,7 @@ const SAICPanel = ({ task: taskProp }) => {
     setSummary('');
     setSubmitted(false);
     setOriginalAiSummary('');
+    setAccountNumberOverride(null);
     hasSubmittedRef.current = false;
     callEndedRef.current = false;
     setCachedPreCall(null);
@@ -587,6 +606,12 @@ const SAICPanel = ({ task: taskProp }) => {
     ? (isVerified ? 'Authenticated' : 'Not Authenticated')
     : null;
 
+  // Caller isn't authenticated yet → let the agent key in / correct the account
+  // number by hand, whether or not one already came down from pre-call. The
+  // override always wins once the agent has typed something.
+  const isNotAuthenticated = authLabel === 'Not Authenticated';
+  const effectiveAccountNumber = accountNumberOverride != null ? accountNumberOverride : accountNumber;
+
   const intentVal =
     preCall?.lastOpenIntent ||
     attrs.lastOpenIntent ||
@@ -645,7 +670,7 @@ const SAICPanel = ({ task: taskProp }) => {
       IVRPathSummary: ivrPath,
       statedReason,
       preCallSentiment,
-      accountNumber,
+      accountNumber: effectiveAccountNumber,
       sentimentLabel,
       sentimentScore,
       callDurationSeconds: postCall?.callDurationSeconds ?? null,
@@ -716,7 +741,19 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Account Number</div>
           <div style={s.fieldValue}>
-            <CopyableValue value={accountNumber} placeholder="Caller's account number" />
+            {isNotAuthenticated ? (
+              <input
+                type="text"
+                value={effectiveAccountNumber || ''}
+                onChange={(e) => setAccountNumberOverride(e.target.value)}
+                placeholder="Enter caller's account number"
+                disabled={submitted}
+                style={s.accountNumberInput}
+                title="Caller is not authenticated — enter/correct the account number"
+              />
+            ) : (
+              <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
+            )}
           </div>
         </div>
       </div>
