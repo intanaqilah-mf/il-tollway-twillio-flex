@@ -95,8 +95,14 @@ const s = {
     fontWeight: '500',
     lineHeight: '1.4',
   },
+  accountNumberEditRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+  },
   accountNumberInput: {
-    width: '100%',
+    flex: 1,
+    minWidth: 0,
     boxSizing: 'border-box',
     padding: '5px 8px',
     fontSize: '13px',
@@ -106,6 +112,18 @@ const s = {
     border: `1px solid ${colors.sapBlue}`,
     borderRadius: '4px',
     outline: 'none',
+  },
+  accountNumberIconBtn: {
+    flexShrink: 0,
+    width: '22px',
+    height: '22px',
+    lineHeight: '20px',
+    padding: 0,
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    background: colors.white,
   },
   fieldPlaceholder: {
     color: colors.textSecondary,
@@ -465,6 +483,10 @@ const SAICPanel = ({ task: taskProp }) => {
   // system-derived value underneath. Once set, the override wins everywhere the
   // account number is displayed or submitted.
   const [accountNumberOverride, setAccountNumberOverride] = useState(null);
+  // Starts true so the field opens directly in edit mode the first time it
+  // shows up unauthenticated. ✓ collapses it back to a read-only view; ✕
+  // discards whatever was typed and also collapses it.
+  const [accountNumberEditing, setAccountNumberEditing] = useState(true);
   const hasSubmittedRef = useRef(false);
   const callEndedRef = useRef(false);
 
@@ -517,6 +539,7 @@ const SAICPanel = ({ task: taskProp }) => {
     setSubmitted(false);
     setOriginalAiSummary('');
     setAccountNumberOverride(null);
+    setAccountNumberEditing(true);
     hasSubmittedRef.current = false;
     callEndedRef.current = false;
     setCachedPreCall(null);
@@ -741,16 +764,44 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Account Number</div>
           <div style={s.fieldValue}>
-            {isNotAuthenticated ? (
-              <input
-                type="text"
-                value={effectiveAccountNumber || ''}
-                onChange={(e) => setAccountNumberOverride(e.target.value)}
-                placeholder="Enter caller's account number"
-                disabled={submitted}
-                style={s.accountNumberInput}
-                title="Caller is not authenticated — enter/correct the account number"
-              />
+            {isNotAuthenticated && accountNumberEditing ? (
+              <div style={s.accountNumberEditRow}>
+                <input
+                  type="text"
+                  value={effectiveAccountNumber || ''}
+                  onChange={(e) => setAccountNumberOverride(e.target.value)}
+                  placeholder="Enter caller's account number"
+                  disabled={submitted}
+                  style={s.accountNumberInput}
+                  title="Caller is not authenticated — enter/correct the account number"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setAccountNumberEditing(false)}
+                  disabled={submitted}
+                  title="Confirm account number"
+                  style={{ ...s.accountNumberIconBtn, color: colors.authGreen, border: `1px solid ${colors.authGreen}` }}
+                >✓</button>
+                <button
+                  type="button"
+                  onClick={() => { setAccountNumberOverride(null); setAccountNumberEditing(false); }}
+                  disabled={submitted}
+                  title="Discard edit"
+                  style={{ ...s.accountNumberIconBtn, color: colors.sentimentRed, border: `1px solid ${colors.sentimentRed}` }}
+                >✕</button>
+              </div>
+            ) : isNotAuthenticated ? (
+              <div style={s.accountNumberEditRow}>
+                <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
+                <button
+                  type="button"
+                  onClick={() => setAccountNumberEditing(true)}
+                  disabled={submitted}
+                  title="Edit account number"
+                  style={{ ...s.accountNumberIconBtn, color: colors.sapBlue, border: `1px solid ${colors.sapBlue}` }}
+                >✎</button>
+              </div>
             ) : (
               <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
             )}
