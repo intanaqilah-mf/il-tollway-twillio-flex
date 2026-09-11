@@ -487,6 +487,11 @@ const SAICPanel = ({ task: taskProp }) => {
   // shows up unauthenticated. ✓ collapses it back to a read-only view; ✕
   // discards whatever was typed and also collapses it.
   const [accountNumberEditing, setAccountNumberEditing] = useState(true);
+  // Snapshot of the last *confirmed* override, taken whenever edit mode opens.
+  // ✕ restores this instead of wiping the field back to the raw system value —
+  // otherwise re-editing after a confirmed edit and then discarding would lose
+  // the previously confirmed number instead of just undoing the latest keystrokes.
+  const accountNumberSnapshotRef = useRef(null);
   const hasSubmittedRef = useRef(false);
   const callEndedRef = useRef(false);
 
@@ -540,6 +545,7 @@ const SAICPanel = ({ task: taskProp }) => {
     setOriginalAiSummary('');
     setAccountNumberOverride(null);
     setAccountNumberEditing(true);
+    accountNumberSnapshotRef.current = null;
     hasSubmittedRef.current = false;
     callEndedRef.current = false;
     setCachedPreCall(null);
@@ -768,12 +774,14 @@ const SAICPanel = ({ task: taskProp }) => {
               <div style={s.accountNumberEditRow}>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={effectiveAccountNumber || ''}
-                  onChange={(e) => setAccountNumberOverride(e.target.value)}
+                  onChange={(e) => setAccountNumberOverride(e.target.value.replace(/\D/g, ''))}
                   placeholder="Enter caller's account number"
                   disabled={submitted}
                   style={s.accountNumberInput}
-                  title="Caller is not authenticated — enter/correct the account number"
+                  title="Caller is not authenticated — enter/correct the account number (digits only)"
                   autoFocus
                 />
                 <button
@@ -785,7 +793,7 @@ const SAICPanel = ({ task: taskProp }) => {
                 >✓</button>
                 <button
                   type="button"
-                  onClick={() => { setAccountNumberOverride(null); setAccountNumberEditing(false); }}
+                  onClick={() => { setAccountNumberOverride(accountNumberSnapshotRef.current); setAccountNumberEditing(false); }}
                   disabled={submitted}
                   title="Discard edit"
                   style={{ ...s.accountNumberIconBtn, color: colors.sentimentRed, border: `1px solid ${colors.sentimentRed}` }}
@@ -796,7 +804,7 @@ const SAICPanel = ({ task: taskProp }) => {
                 <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
                 <button
                   type="button"
-                  onClick={() => setAccountNumberEditing(true)}
+                  onClick={() => { accountNumberSnapshotRef.current = accountNumberOverride; setAccountNumberEditing(true); }}
                   disabled={submitted}
                   title="Edit account number"
                   style={{ ...s.accountNumberIconBtn, color: colors.sapBlue, border: `1px solid ${colors.sapBlue}` }}
