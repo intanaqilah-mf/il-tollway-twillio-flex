@@ -483,10 +483,9 @@ const SAICPanel = ({ task: taskProp }) => {
   // system-derived value underneath. Once set, the override wins everywhere the
   // account number is displayed or submitted.
   const [accountNumberOverride, setAccountNumberOverride] = useState(null);
-  // Starts true so the field opens directly in edit mode the first time it
-  // shows up unauthenticated. ✓ collapses it back to a read-only view; ✕
-  // discards whatever was typed and also collapses it.
-  const [accountNumberEditing, setAccountNumberEditing] = useState(true);
+  // Starts false — field shows in read-only mode by default. Click ✎ to open
+  // edit mode; ✓ confirms and collapses back; ✕ discards and collapses back.
+  const [accountNumberEditing, setAccountNumberEditing] = useState(false);
   // Snapshot of the last *confirmed* override, taken whenever edit mode opens.
   // ✕ restores this instead of wiping the field back to the raw system value —
   // otherwise re-editing after a confirmed edit and then discarding would lose
@@ -544,7 +543,7 @@ const SAICPanel = ({ task: taskProp }) => {
     setSubmitted(false);
     setOriginalAiSummary('');
     setAccountNumberOverride(null);
-    setAccountNumberEditing(true);
+    setAccountNumberEditing(false);
     accountNumberSnapshotRef.current = null;
     hasSubmittedRef.current = false;
     callEndedRef.current = false;
@@ -635,10 +634,8 @@ const SAICPanel = ({ task: taskProp }) => {
     ? (isVerified ? 'Authenticated' : 'Not Authenticated')
     : null;
 
-  // Caller isn't authenticated yet → let the agent key in / correct the account
-  // number by hand, whether or not one already came down from pre-call. The
-  // override always wins once the agent has typed something.
-  const isNotAuthenticated = authLabel === 'Not Authenticated';
+  // Always let the agent edit the account number regardless of auth status —
+  // the override wins once the agent has typed something.
   const effectiveAccountNumber = accountNumberOverride != null ? accountNumberOverride : accountNumber;
 
   const intentVal =
@@ -770,7 +767,7 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Account Number</div>
           <div style={s.fieldValue}>
-            {isNotAuthenticated && accountNumberEditing ? (
+            {accountNumberEditing ? (
               <div style={s.accountNumberEditRow}>
                 <input
                   type="text"
@@ -781,7 +778,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   placeholder="Enter caller's account number"
                   disabled={submitted}
                   style={s.accountNumberInput}
-                  title="Caller is not authenticated — enter/correct the account number (digits only)"
+                  title="Enter/correct the account number (digits only)"
                   autoFocus
                 />
                 <button
@@ -799,7 +796,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   style={{ ...s.accountNumberIconBtn, color: colors.sentimentRed, border: `1px solid ${colors.sentimentRed}` }}
                 >✕</button>
               </div>
-            ) : isNotAuthenticated ? (
+            ) : (
               <div style={s.accountNumberEditRow}>
                 <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
                 <button
@@ -810,8 +807,6 @@ const SAICPanel = ({ task: taskProp }) => {
                   style={{ ...s.accountNumberIconBtn, color: colors.sapBlue, border: `1px solid ${colors.sapBlue}` }}
                 >✎</button>
               </div>
-            ) : (
-              <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
             )}
           </div>
         </div>
