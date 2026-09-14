@@ -95,6 +95,36 @@ const s = {
     fontWeight: '500',
     lineHeight: '1.4',
   },
+  accountNumberEditRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+  },
+  accountNumberInput: {
+    flex: 1,
+    minWidth: 0,
+    boxSizing: 'border-box',
+    padding: '5px 8px',
+    fontSize: '13px',
+    fontWeight: '500',
+    fontFamily: 'inherit',
+    color: colors.textPrimary,
+    border: `1px solid ${colors.sapBlue}`,
+    borderRadius: '4px',
+    outline: 'none',
+  },
+  accountNumberIconBtn: {
+    flexShrink: 0,
+    width: '22px',
+    height: '22px',
+    lineHeight: '20px',
+    padding: 0,
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    background: colors.white,
+  },
   fieldPlaceholder: {
     color: colors.textSecondary,
     fontWeight: '400',
@@ -447,6 +477,20 @@ const SAICPanel = ({ task: taskProp }) => {
   const [summary, setSummary] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [originalAiSummary, setOriginalAiSummary] = useState('');
+  // Manual account-number override — lets the agent key in / correct the account
+  // number when the caller hasn't been authenticated yet (so no trusted value has
+  // come down from pre-call). null = agent hasn't touched it, so we still track the
+  // system-derived value underneath. Once set, the override wins everywhere the
+  // account number is displayed or submitted.
+  const [accountNumberOverride, setAccountNumberOverride] = useState(null);
+  // Starts false — field shows in read-only mode by default. Click ✎ to open
+  // edit mode; ✓ confirms and collapses back; ✕ discards and collapses back.
+  const [accountNumberEditing, setAccountNumberEditing] = useState(false);
+  // Snapshot of the last *confirmed* override, taken whenever edit mode opens.
+  // ✕ restores this instead of wiping the field back to the raw system value —
+  // otherwise re-editing after a confirmed edit and then discarding would lose
+  // the previously confirmed number instead of just undoing the latest keystrokes.
+  const accountNumberSnapshotRef = useRef(null);
   const hasSubmittedRef = useRef(false);
   const callEndedRef = useRef(false);
 
@@ -498,6 +542,9 @@ const SAICPanel = ({ task: taskProp }) => {
     setSummary('');
     setSubmitted(false);
     setOriginalAiSummary('');
+    setAccountNumberOverride(null);
+    setAccountNumberEditing(false);
+    accountNumberSnapshotRef.current = null;
     hasSubmittedRef.current = false;
     callEndedRef.current = false;
     setCachedPreCall(null);
@@ -587,6 +634,10 @@ const SAICPanel = ({ task: taskProp }) => {
     ? (isVerified ? 'Authenticated' : 'Not Authenticated')
     : null;
 
+  // Always let the agent edit the account number regardless of auth status —
+  // the override wins once the agent has typed something.
+  const effectiveAccountNumber = accountNumberOverride != null ? accountNumberOverride : accountNumber;
+
   const intentVal =
     preCall?.lastOpenIntent ||
     attrs.lastOpenIntent ||
@@ -645,7 +696,7 @@ const SAICPanel = ({ task: taskProp }) => {
       IVRPathSummary: ivrPath,
       statedReason,
       preCallSentiment,
-      accountNumber,
+      accountNumber: effectiveAccountNumber,
       sentimentLabel,
       sentimentScore,
       callDurationSeconds: postCall?.callDurationSeconds ?? null,
@@ -716,7 +767,47 @@ const SAICPanel = ({ task: taskProp }) => {
         <div style={s.fieldColRight}>
           <div style={s.fieldLabel}>Account Number</div>
           <div style={s.fieldValue}>
-            <CopyableValue value={accountNumber} placeholder="Caller's account number" />
+            {accountNumberEditing ? (
+              <div style={s.accountNumberEditRow}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={effectiveAccountNumber || ''}
+                  onChange={(e) => setAccountNumberOverride(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Enter caller's account number"
+                  disabled={submitted}
+                  style={s.accountNumberInput}
+                  title="Enter/correct the account number (digits only)"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setAccountNumberEditing(false)}
+                  disabled={submitted}
+                  title="Confirm account number"
+                  style={{ ...s.accountNumberIconBtn, color: colors.authGreen, border: `1px solid ${colors.authGreen}` }}
+                >✓</button>
+                <button
+                  type="button"
+                  onClick={() => { setAccountNumberOverride(accountNumberSnapshotRef.current); setAccountNumberEditing(false); }}
+                  disabled={submitted}
+                  title="Discard edit"
+                  style={{ ...s.accountNumberIconBtn, color: colors.sentimentRed, border: `1px solid ${colors.sentimentRed}` }}
+                >✕</button>
+              </div>
+            ) : (
+              <div style={s.accountNumberEditRow}>
+                <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
+                <button
+                  type="button"
+                  onClick={() => { accountNumberSnapshotRef.current = accountNumberOverride; setAccountNumberEditing(true); }}
+                  disabled={submitted}
+                  title="Edit account number"
+                  style={{ ...s.accountNumberIconBtn, color: colors.sapBlue, border: `1px solid ${colors.sapBlue}` }}
+                >✎</button>
+              </div>
+            )}
           </div>
         </div>
       </div>
