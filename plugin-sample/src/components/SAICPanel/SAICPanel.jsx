@@ -796,7 +796,7 @@ const SAICPanel = ({ task: taskProp }) => {
                   style={{ ...s.accountNumberIconBtn, color: colors.sentimentRed, border: `1px solid ${colors.sentimentRed}` }}
                 >✕</button>
               </div>
-            ) : (
+            ) : task ? (
               <div style={s.accountNumberEditRow}>
                 <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
                 <button
@@ -807,6 +807,8 @@ const SAICPanel = ({ task: taskProp }) => {
                   style={{ ...s.accountNumberIconBtn, color: colors.sapBlue, border: `1px solid ${colors.sapBlue}` }}
                 >✎</button>
               </div>
+            ) : (
+              <CopyableValue value={effectiveAccountNumber} placeholder="Caller's account number" />
             )}
           </div>
         </div>
